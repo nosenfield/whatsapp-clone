@@ -1,0 +1,543 @@
+# CollabCanvas Development Rules for Cursor AI
+
+## 🎯 MOST IMPORTANT RULE - Read This First
+
+**Before doing ANYTHING else in this project, you MUST:**
+
+Review our project `_docs/README.md`
+
+This document contains critical context about the project structure, current state, and development guidelines. Reading it first will prevent mistakes and ensure you understand the full context before making any changes.
+
+---
+
+## Core Principles
+
+You are working on CollabCanvas, a real-time collaborative canvas application built with React + TypeScript + Konva.js + Firebase. Your primary goal is to build a robust MVP that prioritizes real-time synchronization and multiplayer functionality.
+
+---
+
+## Project Context Documents
+
+**ALWAYS reference these documents before making decisions:**
+1. `_docs/PRD.md` - Product requirements and feature specifications
+2. `_docs/TASK_LIST.md` - Detailed task breakdown and development phases
+3. `_docs/ARCHITECTURE.md` - System architecture, data flows, and technical patterns
+4. `_docs/react-architecture-guide.md` - React development standards and best practices
+
+**Location:** All context documents are in the `_docs/` directory.
+
+---
+
+## Development Workflow
+
+### Rule 1: Ask Before Acting
+**CRITICAL:** When you encounter ANY of the following situations, STOP and ask the user for clarification:
+
+- Ambiguity in requirements or implementation approach
+- Multiple valid technical solutions exist
+- Decision impacts architecture or future extensibility
+- Adding functionality not explicitly in TASK_LIST.md
+- Deviating from patterns in react-architecture-guide.md
+- Creating new abstractions or design patterns
+- Uncertain about task completion criteria
+- Need to refactor existing working code
+- Error messages that have multiple possible root causes
+
+**Format for questions:**
+```
+⚠️ CLARIFICATION NEEDED
+
+Context: [Brief description of what you're working on]
+Issue: [Specific point of uncertainty]
+Options: [2-3 possible approaches if applicable]
+Recommendation: [Your suggested approach with reasoning]
+
+Waiting for your decision before proceeding.
+```
+
+### Rule 2: Task Completion Check-In
+After completing ANY task from TASK_LIST.md:
+
+1. **STOP** - Do not proceed to the next task automatically
+2. **Report** what was completed using this format:
+```
+✅ TASK COMPLETED
+
+Task: [Task name from TASK_LIST.md]
+Changes Made:
+- [Specific file/component created or modified]
+- [Key functionality implemented]
+- [Any deviations from original plan]
+
+Testing Performed:
+- [What you tested]
+- [Results]
+
+Ready for Next Task: [Yes/No]
+Blockers: [Any issues encountered]
+
+Awaiting your approval to continue.
+```
+3. **Wait** for explicit user approval before moving to next task
+4. **NEVER make git commits automatically** - Always ask user for approval before committing
+
+### Rule 3: Git Commit Approval
+**CRITICAL GIT RULE:**
+
+- ❌ **NEVER** automatically commit code after completing a task
+- ❌ **NEVER** assume the user wants changes committed
+- ❌ **NEVER** add files to the commit that you did not work on during your task
+- ✅ **ALWAYS** wait for explicit user approval before committing
+- ✅ **ASK** the user if they want to commit changes after task completion
+
+**Format for commit request:**
+```
+📝 READY TO COMMIT
+
+Files changed:
+- [List of modified/created files]
+
+Proposed commit message:
+[Phase X] [Brief description]
+
+Would you like me to:
+A) Commit these changes now
+B) Wait - you'll review first
+C) Modify the commit message
+
+Waiting for your decision.
+```
+
+**Only commit when:**
+- User explicitly says "commit", "make a commit", or approves option A
+- User has reviewed and approved the changes
+- User confirms the commit message is acceptable
+
+### Rule 4: Context Summary Documents
+At the end of EVERY completed task, automatically create or update a context summary document.
+
+**File Location:** `context-summaries/YYYY-MM-DD-task-name.md`
+
+**Template:**
+```markdown
+# Context Summary: [Task Name]
+**Date:** [Date]
+**Phase:** [Phase from TASK_LIST.md]
+**Status:** Completed
+
+## What Was Built
+[2-3 sentence summary of what was implemented]
+
+## Key Files Modified/Created
+- `path/to/file.tsx` - [Brief description]
+- `path/to/file.ts` - [Brief description]
+
+## Technical Decisions Made
+- [Decision 1 and rationale]
+- [Decision 2 and rationale]
+
+## Dependencies & Integrations
+- [What this task depends on]
+- [What future tasks depend on this]
+
+## State of the Application
+- [What works now]
+- [What's not yet implemented]
+
+## Known Issues/Technical Debt
+- [Any compromises or TODOs]
+
+## Testing Notes
+- [How to test this feature]
+- [Known edge cases]
+
+## Next Steps
+- [What should be done next]
+- [Any prerequisites for next task]
+
+## Code Snippets for Reference
+[Include critical code patterns that future sessions should know about]
+
+## Questions for Next Session
+- [Any open questions or decisions deferred]
+```
+
+**When to create summaries:**
+- After completing any task in TASK_LIST.md
+- After significant architectural decisions
+- Before major refactoring
+- When switching between development phases
+
+---
+
+## React Architecture Rules
+
+**MANDATORY:** Follow all rules in `react-architecture-guide.md`. Key reminders:
+
+### Component Development
+- ✅ Functional components with hooks ONLY
+- ✅ TypeScript for all components (no implicit any)
+- ✅ One component per file, PascalCase naming
+- ✅ Maximum 200 lines per component
+- ✅ Single responsibility principle
+- ❌ NO class components
+- ❌ NO inline styles (use CSS modules or styled-components)
+- ❌ NO prop drilling beyond 2 levels
+
+### State Management
+- Use `useState` for component-local state
+- Use custom hooks for shared logic
+- Use Context API for global state (user, canvas, shapes)
+- Keep state as close to usage as possible
+- Lift state only when necessary
+
+### File Organization
+```
+src/
+├── components/        # Reusable UI components
+├── hooks/            # Custom React hooks
+├── services/         # Firebase service layer
+├── types/            # TypeScript interfaces
+├── utils/            # Helper functions
+├── App.tsx
+└── main.tsx
+```
+
+### Code Quality
+- Use ESLint and Prettier (already configured)
+- Type all function parameters and returns
+- Use meaningful variable names (no `x`, `y` for business logic)
+- Add JSDoc comments for exported functions
+- Remove console.logs before committing
+
+### Performance
+- Use `React.memo` for expensive components
+- Use `useCallback` for functions passed as props
+- Use `useMemo` for expensive calculations
+- Debounce high-frequency events (cursor updates ≤50ms)
+
+---
+
+## Firebase Integration Rules
+
+### Authentication
+- Use Firebase Anonymous Auth only
+- Create user document on first auth
+- Assign random color from predefined palette
+
+### Firestore
+- ALWAYS use TypeScript interfaces for document shapes
+- Use real-time listeners (onSnapshot) for live data
+- Implement onDisconnect handlers for cleanup
+- Batch writes when possible
+- Handle connection errors gracefully
+
+### Security
+- Never expose Firebase config in client code (use .env)
+- Validate data before writing to Firestore
+- Follow principle of least privilege
+
+---
+
+## Konva.js Canvas Rules
+
+### Performance
+- Use Konva Layers to group objects
+- Minimize unnecessary redraws
+- Use `listening: false` for non-interactive shapes during drag
+- Cache complex shapes when appropriate
+
+### Boundaries
+- ALWAYS enforce 10,000 x 10,000px canvas bounds
+- Clamp all positions to canvas edges
+- Canvas center is (0, 0)
+
+### Coordinate Systems
+- Convert screen coordinates to canvas coordinates
+- Account for zoom and pan transformations
+- Test boundary calculations thoroughly
+
+---
+
+## MVP Scope Management
+
+### What's IN Scope (MVP)
+- ✅ Canvas with pan/zoom
+- ✅ Anonymous users with presence
+- ✅ Multiplayer cursors
+- ✅ Rectangle drawing
+- ✅ Shape repositioning
+- ✅ Object locking
+- ✅ Real-time sync
+
+### What's OUT of Scope
+- ❌ Multiple shape types beyond rectangles
+- ❌ Shape styling/color customization
+- ❌ Delete/undo/redo
+- ❌ Resize/rotate shapes
+- ❌ Text layers
+- ❌ AI integration
+- ❌ Export functionality
+- ❌ User accounts/email auth
+
+**If the user asks for out-of-scope features:**
+```
+⚠️ OUT OF SCOPE
+
+The feature "[feature name]" is not in the MVP scope per PRD.md.
+
+Current MVP priorities:
+1. [List current phase priorities]
+
+Would you like to:
+A) Add this to post-MVP backlog
+B) Modify MVP scope (requires PRD update)
+C) Continue with current MVP tasks
+
+Please confirm before I proceed.
+```
+
+---
+
+## Testing Requirements
+
+### Before Marking Task Complete
+- [ ] Code compiles without TypeScript errors
+- [ ] No ESLint warnings
+- [ ] Component renders without errors
+- [ ] Basic functionality works as expected
+- [ ] Tested in dev server (`npm run dev`)
+- [ ] No console errors in browser
+
+### Integration Testing Reminders
+- Test with 2+ browser windows
+- Test network disconnect/reconnect
+- Test boundary edge cases
+- Verify real-time sync works
+- Check performance (60 FPS)
+
+---
+
+## Git Commit Conventions
+
+**IMPORTANT:** Never commit automatically. Always ask for user approval first.
+
+**Format:** `[Phase] Brief description`
+
+**Examples:**
+- `[Phase 1] Implement canvas pan and zoom`
+- `[Phase 2] Add user presence system`
+- `[Phase 3] Create rectangle drawing tool`
+
+**Commit frequency:** After each completed subtask or significant milestone, BUT ONLY after user approval.
+
+---
+
+## Error Handling Protocol
+
+When you encounter an error:
+
+1. **DO NOT** guess or make random changes
+2. **DO** read the full error message carefully
+3. **DO** check relevant documentation
+4. **DO** explain the error to the user with:
+   - Full error message
+   - File and line number
+   - Your understanding of root cause
+   - Proposed solution
+5. **WAIT** for user confirmation before implementing fix
+
+**Format:**
+```
+🚨 ERROR ENCOUNTERED
+
+Error Message:
+[Paste full error]
+
+Location: [File:Line]
+
+Root Cause Analysis:
+[Your understanding]
+
+Proposed Solution:
+[Specific fix]
+
+Confidence Level: [High/Medium/Low]
+
+May I proceed with this fix?
+```
+
+---
+
+## Communication Style
+
+### Be Concise
+- Keep responses focused and actionable
+- Use bullet points for clarity
+- Avoid unnecessary explanations unless asked
+
+### Be Proactive
+- Suggest improvements when relevant
+- Flag potential issues early
+- Recommend testing strategies
+
+### Be Honest
+- Admit when uncertain
+- Explain tradeoffs in technical decisions
+- Don't oversimplify complex problems
+
+---
+
+## Context Management for Long Sessions
+
+### Every 10 Tasks or 2 Hours
+Create a **SESSION_SUMMARY.md** with:
+```markdown
+# Session Summary: [Date]
+
+## Progress Overview
+- Tasks completed: X/Y
+- Current phase: [Phase name]
+- Blockers: [Any issues]
+
+## Key Decisions Made
+- [Decision 1]
+- [Decision 2]
+
+## Current State
+- What's working
+- What's next
+- Dependencies
+
+## Important Context for Next Session
+- [Critical information to remember]
+```
+
+### When Starting New Session
+1. Ask user: "Which context summaries should I review?"
+2. Read relevant summaries from `context-summaries/`
+3. Confirm understanding of current state
+4. Ask which task to begin
+
+---
+
+## Special Situations
+
+### When Stuck
+If you're stuck for more than 2 attempts:
+```
+🤔 NEED HELP
+
+I've tried [X approaches] but haven't resolved [issue].
+
+Attempts made:
+1. [Approach 1] - [Result]
+2. [Approach 2] - [Result]
+
+I recommend:
+- Pairing with you to debug
+- Consulting documentation for [specific topic]
+- Trying [alternative approach]
+
+How would you like to proceed?
+```
+
+### When Suggesting Refactoring
+```
+💡 REFACTORING OPPORTUNITY
+
+Current code: [Brief description]
+Issue: [Performance/maintainability concern]
+
+Proposed refactor:
+- [What would change]
+- [Benefits]
+- [Risks]
+
+Estimated effort: [Small/Medium/Large]
+
+This is optional for MVP. Would you like me to:
+A) Proceed with refactor now
+B) Add to technical debt backlog
+C) Skip and continue with current implementation
+```
+
+### When Performance Issues Arise
+```
+⚡ PERFORMANCE CONCERN
+
+Observed: [Specific performance issue]
+Measured: [FPS, latency, etc.]
+Target: [From PRD requirements]
+
+Root cause: [Your analysis]
+
+Proposed optimizations:
+1. [Option 1] - [Impact]
+2. [Option 2] - [Impact]
+
+Shall I proceed with optimization?
+```
+
+---
+
+## Daily Checklist
+
+At the start of each session:
+- [ ] Review relevant context summaries
+- [ ] Check current task in TASK_LIST.md
+- [ ] Confirm understanding of requirements
+- [ ] Ask about any blockers or changes
+
+At the end of each session:
+- [ ] Create context summary for completed tasks
+- [ ] Update TASK_LIST.md checkboxes
+- [ ] **ASK user about committing changes** (never commit automatically)
+- [ ] Note any blockers for next session
+
+---
+
+## Priorities (In Order)
+
+1. **Multiplayer sync reliability** - This is the hardest and most critical
+2. **MVP scope adherence** - Stay focused on requirements
+3. **Code quality** - Follow architecture guide
+4. **Performance** - Meet 60 FPS and latency targets
+5. **User experience** - Smooth, intuitive interactions
+6. **Documentation** - Context summaries and comments
+
+---
+
+## Final Reminders
+
+- **ASK when uncertain** - Better to ask than assume
+- **CHECK IN after tasks** - Don't move forward automatically  
+- **NEVER commit automatically** - Always get explicit user approval
+- **DOCUMENT everything** - Future sessions depend on context
+- **FOLLOW the guide** - react-architecture-guide.md is your rulebook
+- **TEST frequently** - Catch issues early
+- **STAY IN SCOPE** - MVP first, features later
+
+**Your success is measured by:**
+✅ MVP checklist completion
+✅ Real-time sync working flawlessly  
+✅ Clean, maintainable code
+✅ Comprehensive context documentation
+✅ Minimal technical debt
+
+---
+
+## Quick Reference
+
+**Before any action:** Check PRD.md and TASK_LIST.md
+**When uncertain:** Ask the user
+**After completion:** Create context summary and check in
+**Before committing:** Ask for explicit user approval
+**Every commit:** Follow naming convention (only after approval)
+**Every component:** Follow React architecture guide
+**Every Firebase call:** Use service layer
+**Every task:** Update TASK_LIST.md checkboxes
+
+---
+
+Remember: A simple, working MVP with excellent multiplayer sync is worth more than a feature-rich app with broken collaboration. Stay focused on the core requirements.

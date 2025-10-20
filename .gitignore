@@ -1,0 +1,321 @@
+# WhatsApp Clone - .gitignore
+# Generated for React Native + Expo + Firebase + TypeScript project
+
+# ============================================
+# macOS
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ============================================
+# Node.js
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# ============================================
+# Expo
+# ============================================
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Expo Go
+expo-env.d.ts
+
+# ============================================
+# React Native
+# ============================================
+# OSX
+#
+.DS_Store
+
+# Xcode
+#
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+ios/.xcode.env.local
+
+# Android/IntelliJ
+#
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+*.keystore
+!debug.keystore
+
+# Metro
+.metro-health-check*
+
+# ============================================
+# TypeScript
+# ============================================
+*.tsbuildinfo
+dist/
+build/
+
+# ============================================
+# Testing
+# ============================================
+coverage/
+.nyc_output/
+*.lcov
+
+# Jest
+jest-coverage/
+
+# ============================================
+# Environment Variables & Secrets
+# ============================================
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+
+# Firebase config files with secrets
+firebase-config.json
+service-account-key.json
+google-services.json
+GoogleService-Info.plist
+
+# API keys and secrets
+**/secrets/
+**/keys/
+*.pem
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# ============================================
+# Firebase
+# ============================================
+# Firebase cache
+.firebase/
+.firebaserc
+
+# Firebase emulator data
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+pubsub-debug.log
+
+# Firebase Functions
+functions/node_modules/
+functions/lib/
+functions/.runtimeconfig.json
+
+# ============================================
+# EAS Build
+# ============================================
+# EAS Build artifacts
+eas-build-local/
+*.ipa
+*.apk
+*.aab
+
+# EAS credentials
+credentials.json
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================
+# IDE
+# ============================================
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.history/
+
+# Cursor
+.cursor/
+
+# WebStorm / IntelliJ
+.idea/
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# Temporary Files
+# ============================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# ============================================
+# SQLite (Local Development Databases)
+# ============================================
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# ============================================
+# Miscellaneous
+# ============================================
+*.bak
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# Thumbnails
+Thumbs.db
+
+# Windows
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================
+# Optional: Keep certain files
+# ============================================
+# Uncomment if you want to track these files:
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+
+# ============================================
+# Custom Project Files
+# ============================================
+# Add any project-specific files to ignore below
+
+# Test user data (if generating test fixtures)
+test-data/
+fixtures/
+
+# Documentation builds (if generating docs)
+docs/build/
+
+# Design files
+*.sketch
+*.fig
+*.xd
+*.psd
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+
+# ============================================
+# AI/ML (for future AI integration)
+# ============================================
+*.h5
+*.pkl
+*.joblib
+*.model
+embeddings/
+vector-db/
+
+# Python (if using Python scripts for AI processing)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# ============================================
+# Analytics & Monitoring
+# ============================================
+.sentry/
+sentry.properties
+
+# ============================================
+# End of .gitignore
+# ============================================
