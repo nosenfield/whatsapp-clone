@@ -103,6 +103,7 @@ Use these emoji prefixes in communication:
 | `_docs/README.md` | Project overview | When confused about structure |
 | `_docs/architecture.md` | System architecture | Before major decisions |
 | `_docs/task-list.md` | Implementation tasks | For current task details |
+| `_docs/glossary.md` | UX/UI terminology | Before any UX/UI discussion |
 
 ---
 
