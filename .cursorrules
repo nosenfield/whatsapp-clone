@@ -1,205 +1,128 @@
 # AI Development Rules for Cursor IDE
 
-## 🎯 MOST IMPORTANT RULE - Read This First
+## 🎯 CRITICAL - Read This FIRST
 
 **Before doing ANYTHING else in this project, you MUST:**
 
-Review our project `_docs/README.md`
+1. **Read `memory-bank/activeContext.md`** - Current work focus, active decisions, what we're working on NOW
+2. **Read `memory-bank/progress.md`** - What's complete, what's next, current phase status
+3. **Reference `_docs/README.md`** - Project overview (if confused about structure or getting started)
 
-This document contains critical context about the project structure, current state, and development guidelines. Reading it first will prevent mistakes and ensure you understand the full context before making any changes.
-
----
-
-## Core Principles
-
-You are an AI development assistant working on a software project. Your primary goals are:
-
-1. **Follow the established architecture** - Don't deviate without explicit approval
-2. **Complete tasks sequentially** - Don't skip ahead or work on multiple tasks simultaneously  
-3. **Communicate proactively** - Ask questions when uncertain, report progress clearly
-4. **Maintain context** - Document decisions and progress for future sessions
-5. **Prioritize quality over speed** - Working code is better than fast code that breaks
+These memory bank files are your **ONLY source of truth** for project state. They are updated after every session and tell you exactly where we are.
 
 ---
 
-## Project Context Documents
+## Modern Rules System
 
-**ALWAYS reference these documents before making decisions:**
-1. `_docs/README.md` - Project overview, getting started, quick reference
-2. `_docs/architecture.md` - System architecture, data models, technical decisions
-3. `_docs/task-list.md` - Detailed task breakdown and implementation phases
+This project uses **Cursor's modern rules system** with organized `.mdc` files. Detailed rules are located in:
 
-**When to read them:**
-- **README.md** - Start of every session, when joining project, when confused about structure
-- **architecture.md** - Before implementing any feature, when making architectural decisions
-- **task-list.md** - At the start of each task, to verify requirements and verification steps
+### Core Rules (Apply to All Files)
+- **`.cursor/rules/base.mdc`** - Core principles, project context, non-negotiables
+- **`.cursor/rules/workflow.mdc`** - Development workflow, process, check-ins, commits
 
----
+### Domain-Specific Rules (Apply to Specific Files)
+- **`.cursor/rules/code-standards.mdc`** - TypeScript strict mode, code quality, performance
+- **`.cursor/rules/firebase.mdc`** - Firebase patterns, security rules, Cloud Functions
+- **`.cursor/rules/react-native.mdc`** - Mobile development, components, navigation
+- **`.cursor/rules/testing.mdc`** - Testing requirements before task completion
+- **`.cursor/rules/documentation.mdc`** - Context summaries, memory bank updates
 
-## Development Workflow
-
-### Rule 1: Ask Before Acting
-
-**STOP and ask when:**
-- Requirements are ambiguous or multiple valid solutions exist
-- Decision impacts architecture or future extensibility
-- Adding functionality not in task-list.md or deviating from patterns
-- Creating new abstractions, adding dependencies, or modifying security rules
-- Uncertain about task completion criteria or need to refactor working code
-- Encountering errors with multiple possible root causes
-
-**Format:**
-```
-⚠️ CLARIFICATION NEEDED
-
-Context: [What you're working on]
-Issue: [Point of uncertainty]
-Options: [2-3 possible approaches]
-Recommendation: [Your suggested approach with reasoning]
-
-Waiting for your decision before proceeding.
-```
-
-### Rule 2: Task Completion Check-In
-
-After completing ANY task:
-
-1. **STOP** - Do not proceed automatically
-2. **Report** using this format:
-```
-✅ TASK COMPLETED
-
-Task: [Task name from task-list.md]
-Phase: [Phase number and name]
-
-Changes Made:
-- [Files created/modified with key functionality]
-
-Testing Performed:
-- [What you tested and results]
-
-Verification:
-- [ ] All acceptance criteria met
-- [ ] No TypeScript errors or console warnings
-- [ ] Tested in dev environment
-- [ ] Follows established patterns
-
-Known Issues: [Any limitations]
-Ready for Next Task: [Yes/No]
-Blockers: [Issues needing resolution]
-
-Awaiting your approval to continue.
-```
-3. **Wait** for explicit approval before moving forward
-
-### Rule 3: Git Commit Approval
-
-**NEVER commit automatically. ALWAYS ask first.**
-
-**Format:**
-```
-📝 READY TO COMMIT
-
-Files changed:
-- [List with brief descriptions]
-
-Proposed commit message:
-[PHASE-X] [Brief descriptive message]
-
-Would you like me to:
-A) Commit now  B) Wait for review  C) Modify message  D) Stage specific files
-
-Waiting for your decision.
-```
-
-**Only commit when:**
-- User explicitly approves (says "commit" or chooses option A)
-- All changes are reviewed and accepted
-- Commit message is confirmed
-
-**Commit conventions:**
-- Format: `[PHASE-TASK] Brief description` (e.g., `[PHASE2-5] Add optimistic UI updates`)
-- Use imperative mood ("Add" not "Added")
-- Keep concise but descriptive
-
-### Rule 4: Context Documentation
-
-**Create context summaries after EVERY completed task.**
-
-**Location:** `context-summaries/YYYY-MM-DD-task-name.md`
-
-**Template:**
-```markdown
-# Context Summary: [Task Name]
-**Date:** [YYYY-MM-DD]
-**Phase:** [Phase from task-list.md]
-**Status:** Completed
-
-## What Was Built
-[2-3 sentence summary]
-
-## Key Files Modified/Created
-- `path/to/file` - [Description]
-
-## Technical Decisions Made
-- [Decision with rationale]
-
-## Dependencies & State
-- What this depends on / what depends on this
-- What works now / what's not implemented
-
-## Known Issues/Technical Debt
-[Any compromises or TODOs]
-
-## Testing Notes
-[How to test, edge cases, test data]
-
-## Next Steps
-[According to task-list.md]
-
-## Code Snippets for Reference
-```language
-[Critical patterns for future reference]
-```
-
-## Configuration Changes
-[Environment variables, dependencies, config files]
-
-## Questions for Next Session
-[Open questions or deferred decisions]
-```
-
-**When to create:**
-- After every task completion (mandatory)
-- After significant architectural decisions
-- Before major refactoring
-- When switching phases
-- Every 5-10 tasks, create a session summary
-
-**Session Summary Template:**
-```markdown
-# Session Summary: [Date]
-
-## Progress Overview
-- Tasks completed: [List]
-- Current phase: [Name]
-- Blockers: [Issues]
-
-## Key Decisions Made
-[Decisions with rationale]
-
-## Current State
-- Working: [Complete features]
-- In progress: [Current task]
-- Next: [From task-list.md]
-
-## Important Context for Next Session
-[Critical information, decisions impacting future work, technical debt]
-```
+**See `.cursor/rules/README.md` for complete documentation.**
 
 ---
 
-## Code Quality Standards
+## Quick Reference
+
+### Core Principles (from base.mdc)
+
+1. **Follow Established Architecture** - Don't deviate without approval
+2. **Complete Tasks Sequentially** - No skipping or parallel work
+3. **Communicate Proactively** - Ask when uncertain
+4. **Maintain Context** - Document everything
+5. **Quality Over Speed** - Working code beats fast broken code
+
+### Critical Workflow (from workflow.mdc)
+
+**⚠️ ALWAYS ASK when:**
+- Requirements unclear or multiple solutions exist
+- Decision impacts architecture
+- Adding functionality not in task-list.md
+- Uncertain about completion criteria
+- Encountering errors with multiple root causes
+
+**✅ ALWAYS CHECK IN after completing ANY task**
+- Stop and report with completion format
+- Wait for approval before next task
+
+**📝 NEVER COMMIT automatically**
+- Always ask for commit approval first
+- Use format: `[PHASE-X] Brief description`
+
+**📄 ALWAYS DOCUMENT**
+- Create context summary after every task
+- Location: `context-summaries/YYYY-MM-DD-task-name.md`
+
+### Non-Negotiables (from base.mdc)
+
+These principles MUST be followed:
+
+1. ✅ **TypeScript Strict Mode** - No `any` without documentation
+2. ✅ **Ask Before Acting** - When uncertain, stop and ask
+3. ✅ **Sequential Development** - Follow task-list.md order
+4. ✅ **Context Documentation** - Document all decisions
+5. ✅ **Security First** - Proper Firebase rules, no secrets
+6. ✅ **Real Device Testing** - Push notifications need physical iPhone
+7. ✅ **Commit Approval Required** - Never auto-commit
+
+### Status Indicators (from workflow.mdc)
+
+Use these emoji prefixes in communication:
+- ⚠️ Clarification needed
+- ✅ Task completed
+- 📝 Ready to commit
+- 🚨 Error encountered
+- 💡 Suggestion/opportunity
+- 🤔 Need help/stuck
+- ⚡ Performance concern
+- 🔄 Refactoring opportunity
+- 🔒 Security concern
+
+---
+
+## Essential Documentation
+
+**Always reference before making decisions:**
+
+| Document | Purpose | When to Read |
+|----------|---------|--------------|
+| `memory-bank/activeContext.md` | Current work focus | Start of every session |
+| `memory-bank/progress.md` | What's done, what's next | Start of every session |
+| `memory-bank/projectbrief.md` | Project foundation | When unclear on scope/goals |
+| `memory-bank/systemPatterns.md` | Architecture patterns | When implementing features |
+| `memory-bank/techContext.md` | Tech stack details | When setting up or configuring |
+| `_docs/README.md` | Project overview | When confused about structure |
+| `_docs/architecture.md` | System architecture | Before major decisions |
+| `_docs/task-list.md` | Implementation tasks | For current task details |
+
+---
+
+## Priority Hierarchy (from base.mdc)
+
+When making decisions, prioritize in this order:
+
+1. **User instructions** - Always follow direct guidance
+2. **Project requirements** - Meet task-list.md and architecture specs
+3. **Code quality** - Maintainable, readable, type-safe
+4. **Established patterns** - Consistency with existing code
+5. **Performance** - Meet architecture targets
+6. **User experience** - Smooth, intuitive interactions
+7. **Future extensibility** - Easy to extend later
+
+**When priorities conflict: ASK the user, don't assume.**
+
+---
+
+## Code Quality Standards (from code-standards.mdc)
 
 ### TypeScript
 - ✅ Strict mode (no implicit any)
@@ -214,234 +137,23 @@ Waiting for your decision.
 - Group related files together
 - Keep files under 200-300 lines
 
-### Code Style
-- Self-documenting code with clear variable names
-- Comments for complex logic only
-- Meaningful names (no `x`, `y`, `temp`)
-- Small, focused functions (single responsibility)
-- Remove commented code and console.logs before committing
-
 ### Performance
 - Avoid unnecessary re-renders (React.memo, useMemo, useCallback)
 - Debounce/throttle high-frequency events
 - Optimize database queries (indexes, limits, pagination)
 - Lazy load heavy dependencies
-- Profile before optimizing (measure, don't guess)
+- Profile before optimizing
 
 ---
 
-## Testing & Quality Assurance
-
-### Before Marking Task Complete
-- [ ] Code compiles without errors
-- [ ] No linting warnings (unless documented)
-- [ ] Component/function works as expected
-- [ ] Tested in development environment
-- [ ] Edge cases considered and tested
-- [ ] Error handling implemented
-- [ ] Follows existing patterns
-
-### Integration Testing
-- Test with realistic data volumes
-- Test error scenarios (network failures, bad data)
-- Test on target platform (device/simulator)
-- Test with multiple users if multiplayer
-- Verify real-time sync works
-- Check performance meets architecture targets
-
-### When to Write Tests
-- If project has test suite, add tests
-- If user requests tests, write them
-- If critical functionality, suggest tests
-- Follow existing test patterns
-
----
-
-## Error Handling
-
-When encountering errors:
-
-1. **DO NOT** guess or make random changes
-2. **DO** read full error message and check documentation
-3. **DO** explain to user with analysis
-4. **WAIT** for confirmation before fixing
-
-**Format:**
-```
-🚨 ERROR ENCOUNTERED
-
-Error Message: [Full error]
-Location: [File:Line]
-Root Cause: [Your analysis]
-Proposed Solution: [Specific fix]
-Alternative Solutions: [If applicable]
-Confidence Level: [High/Medium/Low]
-
-May I proceed with this fix?
-```
-
-**Common errors:**
-- **TypeScript**: Check types, interfaces, signatures
-- **Import**: Verify paths, check if module installed
-- **Runtime**: Check console, verify data flow
-- **Build**: Check config, dependencies, environment
-- **API**: Check network tab, verify request/response
-
-**Ask for help when:**
-- Error is unclear/cryptic
-- Multiple potential root causes
-- Fix might impact other code
-- Error persists after 2-3 attempts
-
----
-
-## Scope Management
-
-**Stay focused:**
-- ONLY implement current task
-- RESIST adding "nice to have" features
-- DEFER enhancements to future tasks
-- FOCUS on making current task work well
-
-**When user requests out-of-scope work:**
-```
-⚠️ SCOPE CONSIDERATION
-
-Request: "[feature/change]" not in current task/requirements
-Current task: [From task-list.md]
-Impact: [How this differs]
-
-Options:
-A) Add as new task for later
-B) Modify current scope (update task-list.md)
-C) Continue with current task
-
-Recommendation: [Your suggestion with reasoning]
-```
-
-**When you spot improvements:**
-```
-💡 IMPROVEMENT OPPORTUNITY
-
-Noticed: [Description]
-Not blocking: [Current task completion]
-
-Options:
-A) Add to backlog  B) Address now  C) Document and continue
-
-Recommendation: [A/B/C] because [reasoning]
-```
-
----
-
-## Communication Guidelines
-
-### Style
-- **Concise yet complete** - Focused, actionable, formatted clearly
-- **Proactive but not presumptuous** - Suggest improvements, flag issues, but wait for approval
-- **Honest about uncertainty** - Admit gaps, explain tradeoffs, provide confidence levels
-
-### Status Indicators
-Use emoji prefixes for clarity:
-- ⚠️ Clarification needed
-- ✅ Task completed
-- 📝 Ready to commit
-- 🚨 Error encountered
-- 💡 Suggestion/opportunity
-- 🤔 Need help/stuck
-- ⚡ Performance concern
-- 🔄 Refactoring opportunity
-- 🔒 Security concern
-
----
-
-## Special Situations
-
-### When Stuck (after 2-3 attempts):
-```
-🤔 NEED HELP
-
-Attempted [X approaches] but haven't resolved [issue].
-
-Attempts:
-1. [Approach] - [Why it didn't work]
-2. [Approach] - [Why it didn't work]
-
-Current understanding: [Analysis]
-
-Recommend:
-- Pairing to debug
-- Consulting [specific resource]
-- Trying [alternative approach]
-
-How would you like to proceed?
-```
-
-### When Suggesting Refactoring:
-```
-🔄 REFACTORING OPPORTUNITY
-
-Current: [Description and location]
-Issue: [Concern]
-Changes: [What would change]
-Benefits: [What improves]
-Risks: [Potential issues]
-Effort: [Small/Medium/Large]
-Priority: [Low/Medium/High]
-
-Options:
-A) Proceed now  B) Add to backlog  C) Skip  D) Discuss alternatives
-
-Recommendation: [Your suggestion]
-```
-
-### When Performance Issues Arise:
-```
-⚡ PERFORMANCE CONCERN
-
-Observed: [Specific issue]
-Measured: [Metrics if available]
-Expected: [Target from architecture]
-Root cause: [Analysis]
-
-Proposed optimizations:
-1. [Option] - [Impact, effort]
-2. [Option] - [Impact, effort]
-
-Recommended: [Which to try first and why]
-
-Proceed with optimization or continue task?
-```
-
-### When Discovering Security Issues:
-```
-🔒 SECURITY CONCERN
-
-Issue: [Description]
-Severity: [Critical/High/Medium/Low]
-Location: [Where]
-Impact: [What could go wrong]
-Fix: [Specific improvement]
-
-Blocking task: [Yes/No]
-
-Options:
-A) Fix immediately (for Critical/High)
-B) Document for later (for Medium/Low)
-C) Discuss alternatives
-```
-
----
-
-## Session Management
+## Session Management (from workflow.mdc)
 
 ### At Session Start
-- [ ] Read `_docs/README.md` if first time or need reorientation
-- [ ] Review relevant context summaries
+- [ ] Read `memory-bank/activeContext.md`
+- [ ] Review `memory-bank/progress.md`
 - [ ] Check current task in task-list.md
 - [ ] Confirm understanding with user
 - [ ] Ask about blockers or priority changes
-- [ ] Verify dev environment ready
 
 ### During Development
 - [ ] Follow task-list.md sequentially
@@ -449,7 +161,6 @@ C) Discuss alternatives
 - [ ] Test incrementally
 - [ ] Document decisions
 - [ ] Follow existing patterns
-- [ ] Check for errors frequently
 
 ### After Each Task
 - [ ] Create context summary
@@ -466,40 +177,39 @@ C) Discuss alternatives
 
 ---
 
-## Priority Hierarchy
+## Testing Requirements (from testing.mdc)
 
-When making decisions, prioritize:
-
-1. **User instructions** - Always follow direct guidance
-2. **Project requirements** - Meet task-list.md and architecture specs
-3. **Code quality** - Maintainable, readable, type-safe
-4. **Established patterns** - Consistency with existing code
-5. **Performance** - Meet architecture targets
-6. **User experience** - Smooth, intuitive interactions
-7. **Future extensibility** - Easy to extend later
-
-**When priorities conflict: ASK the user, don't assume.**
+### Before Marking Task Complete
+- [ ] Code compiles without errors
+- [ ] No linting warnings (unless documented)
+- [ ] Component/function works as expected
+- [ ] Tested in development environment
+- [ ] Edge cases considered and tested
+- [ ] Error handling implemented
+- [ ] Follows established patterns
 
 ---
 
-## Quick Reference
+## Project Context (from base.mdc)
 
-| Situation | Action |
-|-----------|--------|
-| Before any action | Check _docs/README.md and task-list.md |
-| When uncertain | Ask user with clear options |
-| After task completion | Create context summary and check in |
-| Before committing | Ask for explicit user approval |
-| Every commit | Follow naming convention (only after approval) |
-| Every task | Update task-list.md checkboxes |
-| Every 5-10 tasks | Create session summary |
-| Every file | Follow patterns and TypeScript strict mode |
+**Project:** WhatsApp Clone - iOS messaging app with AI layer  
+**Tech Stack:** React Native + Expo + Firebase + TypeScript  
+**Current Phase:** Phase 2 - One-on-One Messaging (see progress.md)  
+**Goal:** TestFlight deployment with 5-100 alpha testers
+
+**Key Constraints:**
+- iOS only (initially)
+- 20-user group limit
+- TypeScript strict mode
+- Dual database (Firestore + RTDB)
+- Optimistic UI pattern
+- Offline-first architecture
 
 ---
 
-## Success Metrics
+## Success Metrics (from base.mdc)
 
-**Effectiveness measured by:**
+Effectiveness measured by:
 - ✅ Tasks completed per requirements
 - ✅ Code quality and standards adherence
 - ✅ Clear communication and documentation
@@ -511,9 +221,7 @@ When making decisions, prioritize:
 
 ---
 
-## Core Rules Summary
-
-### Always Do
+## Always Do
 - ✅ ASK when uncertain
 - ✅ CHECK IN after tasks
 - ✅ DOCUMENT everything
@@ -522,7 +230,7 @@ When making decisions, prioritize:
 - ✅ STAY IN SCOPE
 - ✅ EXPLAIN reasoning
 
-### Never Do
+## Never Do
 - ❌ NEVER commit automatically
 - ❌ NEVER skip tasks
 - ❌ NEVER add unplanned features
@@ -531,4 +239,22 @@ When making decisions, prioritize:
 - ❌ NEVER deviate from architecture without approval
 - ❌ NEVER work on multiple tasks simultaneously
 
+---
+
+## For Detailed Rules
+
+All detailed rules, patterns, and guidelines are in **`.cursor/rules/*.mdc`** files. The rules are automatically applied based on which files you're editing:
+
+- Editing source code? → `code-standards.mdc` applies
+- Working with Firebase? → `firebase.mdc` applies
+- Building React Native components? → `react-native.mdc` applies
+- Writing tests? → `testing.mdc` applies
+- Creating documentation? → `documentation.mdc` applies
+
+You don't need to manually check which rules apply - Cursor handles this automatically based on glob patterns.
+
+---
+
 **Remember:** A thoughtful question is better than a wrong assumption. When in doubt, ask.
+
+**Most Important:** Always start by reading the memory bank files. They tell you exactly where we are and what we're working on.
