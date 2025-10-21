@@ -1,28 +1,32 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useEffect } from 'react';
+import { Redirect } from 'expo-router';
 import { useAuthStore } from '../src/store/auth-store';
 
 export default function Index() {
-  const { user, isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
 
   useEffect(() => {
-    console.log('📱 Index screen mounted');
-    console.log('🔐 Auth state:', { isAuthenticated, isLoading, user: user?.email });
-  }, [isAuthenticated, isLoading, user]);
+    console.log('📱 Index screen - Auth check:', { isAuthenticated, isLoading });
+  }, [isAuthenticated, isLoading]);
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>WhatsApp Clone</Text>
-      <Text style={styles.subtitle}>
-        {isLoading ? 'Checking authentication...' : 
-         isAuthenticated ? `Logged in as ${user?.email}` : 
-         'Not authenticated'}
-      </Text>
-      <Text style={styles.debug}>
-        Check your terminal for logs! 👀
-      </Text>
-    </View>
-  );
+  // Show loading spinner while checking auth state
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  // Redirect based on auth state
+  if (isAuthenticated) {
+    console.log('✅ User authenticated - redirecting to chats');
+    return <Redirect href="/(tabs)/chats" />;
+  } else {
+    console.log('❌ User not authenticated - redirecting to login');
+    return <Redirect href="/(auth)/login" />;
+  }
 }
 
 const styles = StyleSheet.create({
@@ -31,22 +35,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  debug: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 20,
   },
 });
