@@ -13,6 +13,7 @@ import {
   getConversationMessages,
   insertMessage,
   updateMessage,
+  upsertConversation,
 } from '../../src/services/database';
 import { sendMessageToFirestore } from '../../src/services/message-service';
 
@@ -45,7 +46,7 @@ export default function ConversationScreen() {
 
     const loadConversation = async () => {
       try {
-        // 1. Load conversation metadata
+        // 1. Load conversation metadata from Firestore
         const conv = await getConversationById(id);
         if (!conv || !isMounted) {
           if (!conv) {
@@ -54,6 +55,9 @@ export default function ConversationScreen() {
           return;
         }
         setConversation(conv);
+
+        // 1.5. Store conversation in SQLite (required for foreign key constraint)
+        await upsertConversation(conv);
 
         // 2. Load messages from SQLite (instant display)
         const localMessages = await getConversationMessages(id);
@@ -66,17 +70,9 @@ export default function ConversationScreen() {
           if (!isMounted) return;
           console.log('📨 Received messages from Firestore:', firebaseMessages.length);
 
-          // Merge with local messages and deduplicate
+          // Insert all messages (INSERT OR IGNORE handles duplicates automatically)
           for (const fbMessage of firebaseMessages) {
-            // Check if message already exists in SQLite
-            const exists = localMessages.some(
-              (m) => m.id === fbMessage.id || m.localId === fbMessage.id
-            );
-
-            if (!exists) {
-              // Insert new message to SQLite
-              await insertMessage(fbMessage);
-            }
+            await insertMessage(fbMessage);
           }
 
           // Reload from SQLite to get fresh data
@@ -143,7 +139,10 @@ export default function ConversationScreen() {
       // 2. Insert to SQLite
       await insertMessage(optimisticMessage);
 
-      // 3. Reload messages from SQLite (includes optimistic message)
+      // 2.5. Remove from optimistic store since it's now in SQLite
+      removeOptimisticMessage(localId);
+
+      // 3. Reload messages from SQLite (includes the message)
       const updatedMessages = await getConversationMessages(id);
       setMessages(updatedMessages);
 
@@ -166,10 +165,7 @@ export default function ConversationScreen() {
           syncStatus: 'synced',
         });
 
-        // 6. Remove from optimistic store
-        removeOptimisticMessage(localId);
-
-        // 7. Reload messages
+        // 6. Reload messages
         const finalMessages = await getConversationMessages(id);
         setMessages(finalMessages);
       } catch (error) {
@@ -180,9 +176,6 @@ export default function ConversationScreen() {
           status: 'sent', // Keep as sent locally for now
           syncStatus: 'failed',
         });
-
-        // Remove from optimistic store
-        removeOptimisticMessage(localId);
 
         // Reload messages
         const finalMessages = await getConversationMessages(id);

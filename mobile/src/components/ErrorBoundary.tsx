@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { DevErrorScreen } from './DevErrorScreen';
 
 interface Props {
   children: ReactNode;
@@ -9,12 +10,14 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: ErrorInfo;
 }
 
 /**
  * Error Boundary Component
  * Catches unhandled React errors and prevents app crashes
- * Shows user-friendly error screen with retry option
+ * Shows dev-friendly error screen in development
+ * Shows user-friendly error screen in production
  */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -28,6 +31,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Store error info for dev screen
+    this.setState({ errorInfo });
+    
     // Log error details for debugging
     console.error('❌ ErrorBoundary caught:', error, errorInfo);
     
@@ -38,11 +44,23 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: undefined });
+    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
   };
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.hasError && this.state.error) {
+      // Show detailed dev screen in development
+      if (__DEV__) {
+        return (
+          <DevErrorScreen
+            error={this.state.error}
+            errorInfo={this.state.errorInfo}
+            onReset={this.handleReset}
+          />
+        );
+      }
+      
+      // Show simple user-friendly screen in production
       return (
         <View style={styles.container}>
           <MaterialIcons name="error-outline" size={64} color="#FF3B30" />

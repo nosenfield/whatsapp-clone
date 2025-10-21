@@ -118,6 +118,7 @@ export const subscribeToMessages = (
       const data = doc.data();
       return {
         id: doc.id,
+        conversationId, // Add conversationId from the subscription
         ...data,
         timestamp: data.timestamp.toDate(),
       } as Message;

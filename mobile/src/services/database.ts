@@ -97,12 +97,13 @@ const getDb = (): SQLite.SQLiteDatabase => {
 
 /**
  * Insert a new message into the local database
+ * Uses INSERT OR IGNORE to prevent duplicate key errors
  */
 export const insertMessage = async (message: Message): Promise<void> => {
   const database = getDb();
   
   await database.runAsync(
-    `INSERT INTO messages (
+    `INSERT OR IGNORE INTO messages (
       id, localId, conversationId, senderId, contentText, contentType,
       mediaUrl, mediaThumbnail, timestamp, status, syncStatus,
       deliveredTo, readBy
