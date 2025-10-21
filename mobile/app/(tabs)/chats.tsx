@@ -11,6 +11,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useConversations } from '../../src/hooks/useConversations';
+import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { Conversation } from '../../src/types';
 
 export default function ChatsScreen() {
@@ -94,6 +95,7 @@ export default function ChatsScreen() {
   if (isLoading && !conversations) {
     return (
       <View style={styles.container}>
+        <OfflineBanner />
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading conversations...</Text>
@@ -111,6 +113,7 @@ export default function ChatsScreen() {
 
   return (
     <View style={styles.container}>
+      <OfflineBanner />
       {conversations && conversations.length > 0 ? (
         <FlatList
           data={conversations}

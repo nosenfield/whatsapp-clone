@@ -5,6 +5,7 @@ import { useAuthStore } from '../../src/store/auth-store';
 import { useMessageStore } from '../../src/store/message-store';
 import { MessageInput } from '../../src/components/MessageInput';
 import { MessageList } from '../../src/components/MessageList';
+import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { Message, Conversation } from '../../src/types';
 import { getConversationById } from '../../src/services/conversation-service';
 import { subscribeToMessages } from '../../src/services/firebase-firestore';
@@ -37,27 +38,32 @@ export default function ConversationScreen() {
 
   // Load conversation and messages
   useEffect(() => {
-    if (!id || !currentUser) return;
+    if (!id || !currentUser?.id) return;
 
     let unsubscribeFirestore: (() => void) | undefined;
+    let isMounted = true;
 
     const loadConversation = async () => {
       try {
         // 1. Load conversation metadata
         const conv = await getConversationById(id);
-        if (!conv) {
-          Alert.alert('Error', 'Conversation not found');
+        if (!conv || !isMounted) {
+          if (!conv) {
+            Alert.alert('Error', 'Conversation not found');
+          }
           return;
         }
         setConversation(conv);
 
         // 2. Load messages from SQLite (instant display)
         const localMessages = await getConversationMessages(id);
+        if (!isMounted) return;
         setMessages(localMessages);
         setIsLoading(false);
 
         // 3. Subscribe to Firestore for real-time updates
         unsubscribeFirestore = subscribeToMessages(id, async (firebaseMessages) => {
+          if (!isMounted) return;
           console.log('📨 Received messages from Firestore:', firebaseMessages.length);
 
           // Merge with local messages and deduplicate
@@ -75,24 +81,30 @@ export default function ConversationScreen() {
 
           // Reload from SQLite to get fresh data
           const updatedMessages = await getConversationMessages(id);
-          setMessages(updatedMessages);
+          if (isMounted) {
+            setMessages(updatedMessages);
+          }
         });
       } catch (error) {
         console.error('Error loading conversation:', error);
-        Alert.alert('Error', 'Failed to load conversation');
-        setIsLoading(false);
+        if (isMounted) {
+          Alert.alert('Error', 'Failed to load conversation');
+          setIsLoading(false);
+        }
       }
     };
 
     loadConversation();
 
-    // Cleanup
+    // Cleanup: unsubscribe from Firestore and mark component as unmounted
     return () => {
+      isMounted = false;
       if (unsubscribeFirestore) {
+        console.log('🧹 Cleaning up Firestore listener for conversation:', id);
         unsubscribeFirestore();
       }
     };
-  }, [id, currentUser]);
+  }, [id, currentUser?.id]); // Only re-run if conversation ID or user ID changes
 
   // Handle sending a message
   const handleSendMessage = async (text: string) => {
@@ -220,6 +232,7 @@ export default function ConversationScreen() {
         }}
       />
       <View style={styles.container}>
+        <OfflineBanner />
         <MessageList
           messages={allMessages}
           currentUserId={currentUser?.id || ''}

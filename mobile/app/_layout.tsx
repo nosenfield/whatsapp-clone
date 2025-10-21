@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { initDatabase } from '../src/services/database';
 import { useAuthStore } from '../src/store/auth-store';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,13 +34,15 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <StatusBar style="auto" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="auto" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
