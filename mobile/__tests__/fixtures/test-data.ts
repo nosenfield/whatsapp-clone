@@ -9,7 +9,7 @@ export const createTestUser = (overrides?: Partial<User>): User => ({
   id: 'user-123',
   displayName: 'Test User',
   email: 'test@example.com',
-  photoURL: null,
+  photoURL: undefined,
   createdAt: new Date('2025-01-01'),
   lastActive: new Date('2025-01-15'),
   ...overrides,
@@ -30,7 +30,7 @@ export const testUser2: User = createTestUser({
 // Sample Messages
 export const createTestMessage = (overrides?: Partial<Message>): Message => ({
   id: `msg-${Date.now()}`,
-  localId: null,
+  localId: undefined,
   conversationId: 'conv-123',
   senderId: 'user-1',
   content: {
@@ -72,11 +72,11 @@ export const createTestConversation = (overrides?: Partial<Conversation>): Conve
   participantDetails: {
     'user-1': {
       displayName: 'Alice',
-      photoURL: null,
+      photoURL: undefined,
     },
     'user-2': {
       displayName: 'Bob',
-      photoURL: null,
+      photoURL: undefined,
     },
   },
   lastMessage: {
@@ -86,6 +86,7 @@ export const createTestConversation = (overrides?: Partial<Conversation>): Conve
   },
   createdAt: new Date('2025-01-01'),
   lastMessageAt: new Date('2025-01-15T10:00:00'),
+  unreadCount: {},
   ...overrides,
 });
 

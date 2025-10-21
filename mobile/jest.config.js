@@ -1,15 +1,41 @@
 module.exports = {
-  preset: 'jest-expo',
+  // Don't use jest-expo preset - it conflicts with node environment
+  // preset: 'jest-expo',
   
   // Test environment
   testEnvironment: 'node',
   
-  // Setup files
+  // Setup files  
+  setupFiles: ['<rootDir>/__tests__/jest.setup.js'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   
-  // Transform files
+  // Add ts-jest transform for TypeScript
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react',
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true,
+      },
+    }],
+  },
+  
+  // UPDATED: More comprehensive transform ignore patterns
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)',
+    'node_modules/(?!(' +
+      '(jest-)?react-native' +
+      '|@react-native(-community)?' +
+      '|expo(nent)?' +
+      '|@expo(nent)?/.*' +
+      '|@expo-google-fonts/.*' +
+      '|react-navigation' +
+      '|@react-navigation/.*' +
+      '|@unimodules/.*' +
+      '|unimodules' +
+      '|sentry-expo' +
+      '|native-base' +
+      '|react-native-svg' +
+    ')/)',
   ],
   
   // Module paths
@@ -26,7 +52,8 @@ module.exports = {
     '!**/node_modules/**',
   ],
   
-  coverageThresholds: {
+  // FIXED: Changed from coverageThresholds to coverageThreshold (singular)
+  coverageThreshold: {
     global: {
       statements: 70,
       branches: 60,
