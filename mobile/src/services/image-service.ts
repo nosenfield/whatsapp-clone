@@ -34,7 +34,7 @@ export const requestMediaLibraryPermissions = async (): Promise<boolean> => {
  * Pick image from library
  */
 export const pickImage = async (): Promise<ImagePicker.ImagePickerAsset | null> => {
-  try {multi-diff-composer
+  try {
     // Request permission
     const hasPermission = await requestMediaLibraryPermissions();
     if (!hasPermission) {
@@ -43,7 +43,7 @@ export const pickImage = async (): Promise<ImagePicker.ImagePickerAsset | null> 
 
     // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -80,6 +80,7 @@ export const takePhoto = async (): Promise<ImagePicker.ImagePickerAsset | null> 
 
     // Launch camera
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
