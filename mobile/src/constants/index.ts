@@ -23,3 +23,6 @@ export const RATE_LIMITS = {
   aiCallsPerDay: 50,
   aiCallsPerConversation: 10,
 };
+
+// Layout constants (safe areas, spacing, etc.)
+export * from './layout';

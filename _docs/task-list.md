@@ -1,7 +1,7 @@
 # Implementation Task List
 **Messaging App with AI Layer - iOS MVP**
 
-Last Updated: October 20, 2025
+Last Updated: October 21, 2025
 
 ---
 
@@ -321,134 +321,134 @@ Last Updated: October 20, 2025
 **Goal**: Core messaging functionality between two users with real-time sync
 
 ### User Discovery & Conversation Creation
-- [ ] Create `src/services/user-search.ts`:
-  - [ ] `searchUsersByEmail(query)`
-  - [ ] `searchUsersByDisplayName(query)`
-- [ ] Build "New Conversation" screen: `app/new-conversation.tsx`
-  - [ ] Search input field
-  - [ ] User list results
-  - [ ] Tap user to start conversation
-  - [ ] Check if conversation already exists
-  - [ ] Create new conversation if needed
-  - [ ] Navigate to conversation screen
-- [ ] Implement conversation creation logic:
-  - [ ] Create Firestore conversation document
-  - [ ] Add both participants
-  - [ ] Initialize conversation metadata
-  - [ ] Handle duplicate prevention
+- [x] Create `src/services/user-search.ts`:
+  - [x] `searchUsersByEmail(query)`
+  - [x] `searchUsersByDisplayName(query)`
+- [x] Build "New Conversation" screen: `app/new-conversation.tsx`
+  - [x] Search input field
+  - [x] User list results
+  - [x] Tap user to start conversation
+  - [x] Check if conversation already exists
+  - [x] Create new conversation if needed
+  - [x] Navigate to conversation screen
+- [x] Implement conversation creation logic:
+  - [x] Create Firestore conversation document
+  - [x] Add both participants
+  - [x] Initialize conversation metadata
+  - [x] Handle duplicate prevention
 
 ### Conversation Screen Foundation
-- [ ] Create `app/conversation/[id].tsx` (dynamic route)
-- [ ] Build conversation header:
-  - [ ] Back button
-  - [ ] Other user's name
-  - [ ] Online/offline indicator (placeholder for Phase 3)
-  - [ ] Avatar/profile picture
-- [ ] Build message input component: `src/components/MessageInput.tsx`
-  - [ ] Text input field
-  - [ ] Send button
-  - [ ] Character count (show when approaching limit)
-  - [ ] Disable send if empty or too long
-- [ ] Build message list component: `src/components/MessageList.tsx`
-  - [ ] FlatList with inverted prop
-  - [ ] Empty state ("No messages yet")
-  - [ ] Loading state while fetching
-  - [ ] Pull-to-refresh (future: load older messages)
+- [x] Create `app/conversation/[id].tsx` (dynamic route)
+- [x] Build conversation header:
+  - [x] Back button
+  - [x] Other user's name
+  - [x] Online/offline indicator (placeholder for Phase 3)
+  - [x] Avatar/profile picture
+- [x] Build message input component: `src/components/MessageInput.tsx`
+  - [x] Text input field
+  - [x] Send button
+  - [x] Character count (show when approaching limit)
+  - [x] Disable send if empty or too long
+- [x] Build message list component: `src/components/MessageList.tsx`
+  - [x] FlatList with inverted prop
+  - [x] Empty state ("No messages yet")
+  - [x] Loading state while fetching
+  - [x] Pull-to-refresh (future: load older messages)
 
 ### Message Rendering
-- [ ] Create message bubble component: `src/components/MessageBubble.tsx`
-  - [ ] Different styles for sent vs received messages
-  - [ ] Display message text
-  - [ ] Display timestamp
-  - [ ] Display sender name (for future group chats)
-  - [ ] Status indicator (sending, sent, delivered, read)
-  - [ ] Long-press menu (placeholder for Phase 6)
-- [ ] Implement message grouping by time (10-minute intervals)
-- [ ] Add date dividers ("Today", "Yesterday", specific dates)
-- [ ] Handle long messages (proper text wrapping)
-- [ ] Handle links in messages (detect and make tappable)
+- [x] Create message bubble component: `src/components/MessageBubble.tsx`
+  - [x] Different styles for sent vs received messages
+  - [x] Display message text
+  - [x] Display timestamp
+  - [x] Display sender name (for future group chats)
+  - [x] Status indicator (sending, sent, delivered, read)
+  - [x] Long-press menu (placeholder for Phase 6)
+- [x] Implement message grouping by time (10-minute intervals)
+- [x] Add date dividers ("Today", "Yesterday", specific dates)
+- [x] Handle long messages (proper text wrapping)
+- [x] Handle links in messages (detect and make tappable)
 
 ### Send Message Flow (Optimistic Updates)
-- [ ] Implement message send handler:
-  1. [ ] Generate temporary `localId` (UUID)
-  2. [ ] Create message object with `status: 'sending'`
-  3. [ ] Insert into SQLite immediately
-  4. [ ] Add to Zustand optimistic message store
-  5. [ ] UI shows message instantly (gray checkmark)
-  6. [ ] Initiate Firebase write
-  7. [ ] On success:
-     - [ ] Update SQLite with server `id`
-     - [ ] Update status to `'sent'`
-     - [ ] Remove from optimistic store
-     - [ ] Update UI (checkmark changes)
-  8. [ ] On failure:
-     - [ ] Update status to `'failed'`
-     - [ ] Show retry button
-     - [ ] Keep in optimistic store
-- [ ] Implement retry logic for failed messages
-- [ ] Test message send with good network
-- [ ] Test message send with airplane mode (should queue)
+- [x] Implement message send handler:
+  1. [x] Generate temporary `localId` (UUID)
+  2. [x] Create message object with `status: 'sending'`
+  3. [x] Insert into SQLite immediately
+  4. [x] Add to Zustand optimistic message store
+  5. [x] UI shows message instantly (gray checkmark)
+  6. [x] Initiate Firebase write
+  7. [x] On success:
+     - [x] Update SQLite with server `id`
+     - [x] Update status to `'sent'`
+     - [x] Remove from optimistic store
+     - [x] Update UI (checkmark changes)
+  8. [x] On failure:
+     - [x] Update status to `'failed'`
+     - [x] Show retry button
+     - [x] Keep in optimistic store
+- [x] Implement retry logic for failed messages
+- [x] Test message send with good network
+- [x] Test message send with airplane mode (should queue)
 
 ### Receive Message Flow
-- [ ] Set up Firestore real-time listener in conversation screen:
-  - [ ] Subscribe to `/conversations/{id}/messages`
-  - [ ] Order by timestamp descending
-  - [ ] Limit to last 50 messages initially
-- [ ] Implement message receive handler:
-  1. [ ] New message arrives via listener
-  2. [ ] Check if message already in SQLite (deduplication)
-  3. [ ] Insert new message into SQLite
-  4. [ ] React Query cache invalidation
-  5. [ ] UI updates automatically
-- [ ] Implement auto-scroll to bottom on new message (if already at bottom)
-- [ ] Show "scroll to bottom" button if user scrolled up
-- [ ] Test receiving messages in real-time
+- [x] Set up Firestore real-time listener in conversation screen:
+  - [x] Subscribe to `/conversations/{id}/messages`
+  - [x] Order by timestamp descending
+  - [x] Limit to last 50 messages initially
+- [x] Implement message receive handler:
+  1. [x] New message arrives via listener
+  2. [x] Check if message already in SQLite (deduplication)
+  3. [x] Insert new message into SQLite
+  4. [x] React Query cache invalidation
+  5. [x] UI updates automatically
+- [x] Implement auto-scroll to bottom on new message (if already at bottom)
+- [x] Show "scroll to bottom" button if user scrolled up
+- [x] Test receiving messages in real-time
 
 ### Message Persistence & Offline Support
-- [ ] Implement conversation list data loading:
-  - [ ] Load from SQLite first (instant display)
-  - [ ] Fetch from Firestore in background
-  - [ ] Merge and update SQLite
-- [ ] Implement message history loading:
-  - [ ] Load last 50 messages from SQLite
-  - [ ] Load last 50 from Firestore (on initial load)
-  - [ ] Sync newer messages from server
-  - [ ] Store in SQLite
-- [ ] Handle offline message queue:
-  - [ ] Detect network state
-  - [ ] Queue messages with `syncStatus: 'pending'`
-  - [ ] Auto-retry when network returns
-  - [ ] Show "Waiting for network" indicator
-- [ ] Implement conversation list sync:
-  - [ ] Subscribe to user's conversations
-  - [ ] Update local cache
-  - [ ] Show unread count badges
+- [x] Implement conversation list data loading:
+  - [x] Load from SQLite first (instant display)
+  - [x] Fetch from Firestore in background
+  - [x] Merge and update SQLite
+- [x] Implement message history loading:
+  - [x] Load last 50 messages from SQLite
+  - [x] Load last 50 from Firestore (on initial load)
+  - [x] Sync newer messages from server
+  - [x] Store in SQLite
+- [x] Handle offline message queue:
+  - [x] Detect network state
+  - [x] Queue messages with `syncStatus: 'pending'`
+  - [x] Auto-retry when network returns
+  - [x] Show "Waiting for network" indicator
+- [x] Implement conversation list sync:
+  - [x] Subscribe to user's conversations
+  - [x] Update local cache
+  - [x] Show unread count badges
 
 ### Conversation List Enhancement
-- [ ] Update `app/(tabs)/chats.tsx` with real data:
-  - [ ] Load conversations from SQLite
-  - [ ] Subscribe to Firestore updates
-  - [ ] Display conversation items with:
-    - [ ] Other user's avatar
-    - [ ] Other user's name
-    - [ ] Last message preview
-    - [ ] Timestamp of last message
-    - [ ] Unread count badge
+- [x] Update `app/(tabs)/chats.tsx` with real data:
+  - [x] Load conversations from SQLite
+  - [x] Subscribe to Firestore updates
+  - [x] Display conversation items with:
+    - [x] Other user's avatar
+    - [x] Other user's name
+    - [x] Last message preview
+    - [x] Timestamp of last message
+    - [x] Unread count badge
     - [ ] Online indicator (Phase 3)
-  - [ ] Sort by last message timestamp
-  - [ ] Tap to navigate to conversation
-- [ ] Implement pull-to-refresh
+  - [x] Sort by last message timestamp
+  - [x] Tap to navigate to conversation
+- [x] Implement pull-to-refresh
 - [ ] Add swipe actions (archive/delete - placeholder for Phase 6)
 
 ### React Query Integration
-- [ ] Create custom hooks:
-  - [ ] `useConversations()` - fetches user's conversation list
-  - [ ] `useConversation(id)` - fetches single conversation
-  - [ ] `useMessages(conversationId)` - fetches messages with pagination
-  - [ ] `useSendMessage(conversationId)` - mutation for sending
-- [ ] Configure query cache invalidation strategy
-- [ ] Set up optimistic updates with React Query
-- [ ] Add error handling and retry logic
+- [x] Create custom hooks:
+  - [x] `useConversations()` - fetches user's conversation list
+  - [x] `useConversation(id)` - fetches single conversation
+  - [x] `useMessages(conversationId)` - fetches messages with pagination
+  - [x] `useSendMessage(conversationId)` - mutation for sending
+- [x] Configure query cache invalidation strategy
+- [x] Set up optimistic updates with React Query
+- [x] Add error handling and retry logic
 
 ### Testing Two-User Flow
 - [ ] Create two test accounts
@@ -458,6 +458,14 @@ Last Updated: October 20, 2025
 - [ ] Verify message history persists after app restart
 - [ ] Test offline send and sync
 - [ ] Verify SQLite contains all messages
+
+### Additional Enhancements (Completed)
+- [x] Create universal layout system with safe areas (`src/constants/layout.ts`)
+- [x] Apply iOS safe area spacing to all screens
+- [x] Add back button to new conversation screen
+- [x] Update root navigation to use Stack (enables back buttons)
+- [x] Create conversation service (`src/services/conversation-service.ts`)
+- [x] Create message service (`src/services/message-service.ts`)
 
 **Checkpoint**: ✅ Two users can chat in real-time with persistence
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Slot } from 'expo-router';
+import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { initDatabase } from '../src/services/database';
@@ -29,20 +29,17 @@ export default function RootLayout() {
     
     // Initialize authentication listener
     console.log('🔐 Initializing auth listener...');
-    const unsubscribe = useAuthStore.getState().initializeAuth();
-    
-    // Cleanup on unmount
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    useAuthStore.getState().initializeAuth();
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <StatusBar style="auto" />
-      <Slot />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+        }}
+      />
     </QueryClientProvider>
   );
 }
