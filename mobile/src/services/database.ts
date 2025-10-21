@@ -102,6 +102,11 @@ const getDb = (): SQLite.SQLiteDatabase => {
 export const insertMessage = async (message: Message): Promise<void> => {
   const database = getDb();
   
+  // Validate required fields
+  if (!message.conversationId) {
+    throw new Error('conversationId is required');
+  }
+  
   await database.runAsync(
     `INSERT OR IGNORE INTO messages (
       id, localId, conversationId, senderId, contentText, contentType,

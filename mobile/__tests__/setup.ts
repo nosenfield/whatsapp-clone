@@ -19,9 +19,43 @@ jest.mock('expo-constants', () => ({
   },
 }), { virtual: true });
 
-jest.mock('expo-sqlite', () => ({
-  openDatabaseAsync: jest.fn(),
-}), { virtual: true });
+// Mock expo-sqlite with better-sqlite3 for real SQL testing
+jest.mock('expo-sqlite', () => {
+  const Database = require('better-sqlite3');
+  const databases = new Map();
+
+  return {
+    openDatabaseAsync: jest.fn(async (name: string) => {
+      // Use in-memory database for tests
+      let db = databases.get(name);
+      if (!db) {
+        db = new Database(':memory:');
+        databases.set(name, db);
+      }
+
+      return {
+        execAsync: jest.fn(async (sql: string) => {
+          db.exec(sql);
+        }),
+        
+        runAsync: jest.fn(async (sql: string, params: any[] = []) => {
+          const stmt = db.prepare(sql);
+          return stmt.run(...params);
+        }),
+        
+        getAllAsync: jest.fn(async (sql: string, params: any[] = []) => {
+          const stmt = db.prepare(sql);
+          return stmt.all(...params);
+        }),
+        
+        getFirstAsync: jest.fn(async (sql: string, params: any[] = []) => {
+          const stmt = db.prepare(sql);
+          return stmt.get(...params);
+        }),
+      };
+    }),
+  };
+});
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
