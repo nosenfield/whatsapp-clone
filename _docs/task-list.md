@@ -467,7 +467,31 @@ Last Updated: October 21, 2025
 - [x] Create conversation service (`src/services/conversation-service.ts`)
 - [x] Create message service (`src/services/message-service.ts`)
 
-**Checkpoint**: ✅ Two users can chat in real-time with persistence
+### Production Readiness Refactors (Completed)
+- [x] Enable Firestore offline persistence:
+  - [x] Switch from `getFirestore()` to `initializeFirestore()` with `persistentLocalCache()`
+  - [x] Enables faster queries and better offline support
+  - [x] Modified: `mobile/firebase.config.ts`
+- [x] Add Error Boundary component:
+  - [x] Created `ErrorBoundary` component to catch unhandled errors
+  - [x] Wrapped app in error boundary at root layout
+  - [x] Prevents app crashes with user-friendly recovery screen
+  - [x] New: `mobile/src/components/ErrorBoundary.tsx`
+  - [x] Modified: `mobile/app/_layout.tsx`
+- [x] Implement network state detection:
+  - [x] Installed `@react-native-community/netinfo` package
+  - [x] Created `useNetworkStatus` hook for real-time monitoring
+  - [x] Created `OfflineBanner` component (shows red banner when offline)
+  - [x] Added banner to Chats and Conversation screens
+  - [x] New: `mobile/src/hooks/useNetworkStatus.ts`
+  - [x] New: `mobile/src/components/OfflineBanner.tsx`
+- [x] Fix Firestore listener cleanup:
+  - [x] Fixed useEffect dependency (currentUser → currentUser?.id)
+  - [x] Added isMounted flag to prevent state updates after unmount
+  - [x] Prevents memory leaks and duplicate listeners
+  - [x] Modified: `mobile/app/conversation/[id].tsx`
+
+**Checkpoint**: ✅ Two users can chat in real-time with persistence + production-ready error handling and offline support
 
 ---
 
