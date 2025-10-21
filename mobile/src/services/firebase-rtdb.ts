@@ -1,8 +1,45 @@
 import { realtimeDb } from '../../firebase.config';
-import { ref, set, onValue, onDisconnect, serverTimestamp } from 'firebase/database';
+import { 
+  ref, 
+  set, 
+  onValue, 
+  onDisconnect, 
+  serverTimestamp,
+  get
+} from 'firebase/database';
 import { Presence } from '../types';
 
-// Presence operations
+// Initialize presence system for a user
+// This should be called once on app launch after authentication
+export const initializePresence = async (userId: string): Promise<void> => {
+  console.log('🟢 Initializing presence for user:', userId);
+  
+  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const connectionRef = ref(realtimeDb, '.info/connected');
+  
+  // Monitor connection state
+  onValue(connectionRef, async (snapshot) => {
+    if (snapshot.val() === true) {
+      console.log('🟢 Connected to Firebase RTDB');
+      
+      // Set user as online
+      await set(presenceRef, {
+        online: true,
+        lastSeen: serverTimestamp(),
+      });
+      
+      // Set up automatic offline status on disconnect
+      onDisconnect(presenceRef).set({
+        online: false,
+        lastSeen: serverTimestamp(),
+      });
+    } else {
+      console.log('🔴 Disconnected from Firebase RTDB');
+    }
+  });
+};
+
+// Manually set presence (for app backgrounding/foregrounding)
 export const setPresence = async (userId: string, online: boolean): Promise<void> => {
   const presenceRef = ref(realtimeDb, `presence/${userId}`);
   
@@ -20,6 +57,7 @@ export const setPresence = async (userId: string, online: boolean): Promise<void
   }
 };
 
+// Subscribe to another user's presence
 export const subscribeToPresence = (
   userId: string,
   callback: (presence: Presence) => void
@@ -33,7 +71,43 @@ export const subscribeToPresence = (
         online: data.online,
         lastSeen: data.lastSeen ? new Date(data.lastSeen) : null,
       });
+    } else {
+      // User has never been online or data doesn't exist
+      callback({
+        online: false,
+        lastSeen: null,
+      });
     }
+  });
+};
+
+// Get presence once (no subscription)
+export const getPresence = async (userId: string): Promise<Presence> => {
+  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const snapshot = await get(presenceRef);
+  
+  if (snapshot.exists()) {
+    const data = snapshot.val();
+    return {
+      online: data.online,
+      lastSeen: data.lastSeen ? new Date(data.lastSeen) : null,
+    };
+  }
+  
+  return {
+    online: false,
+    lastSeen: null,
+  };
+};
+
+// Subscribe to connection state
+export const subscribeToConnectionState = (
+  callback: (connected: boolean) => void
+): (() => void) => {
+  const connectionRef = ref(realtimeDb, '.info/connected');
+  
+  return onValue(connectionRef, (snapshot) => {
+    callback(snapshot.val() === true);
   });
 };
 

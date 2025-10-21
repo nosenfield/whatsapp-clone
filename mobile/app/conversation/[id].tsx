@@ -16,6 +16,11 @@ import {
   upsertConversation,
 } from '../../src/services/database';
 import { sendMessageToFirestore } from '../../src/services/message-service';
+import { usePresence, formatLastSeen } from '../../src/hooks/usePresence';
+import {
+  useTypingIndicators,
+  formatTypingIndicator,
+} from '../../src/hooks/useTypingIndicators';
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,6 +41,23 @@ export default function ConversationScreen() {
     otherParticipant && conversation?.participantDetails[otherParticipant]
       ? conversation.participantDetails[otherParticipant].displayName
       : 'Chat';
+
+  // Subscribe to other participant's presence
+  const presence = usePresence(otherParticipant);
+
+  // Format header subtitle (online status or last seen)
+  const headerSubtitle = presence.online
+    ? 'online'
+    : formatLastSeen(presence.lastSeen);
+
+  // Subscribe to typing indicators
+  const typingUserIds = useTypingIndicators(id, currentUser?.id);
+
+  // Format typing indicator text
+  const typingText =
+    conversation && typingUserIds.length > 0
+      ? formatTypingIndicator(typingUserIds, conversation.participantDetails)
+      : null;
 
   // Load conversation and messages
   useEffect(() => {
@@ -222,6 +244,13 @@ export default function ConversationScreen() {
         options={{
           title: otherParticipantName,
           headerShown: true,
+          headerTitleAlign: 'left',
+          headerTitle: () => (
+            <View>
+              <Text style={styles.headerTitle}>{otherParticipantName}</Text>
+              <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+            </View>
+          ),
         }}
       />
       <View style={styles.container}>
@@ -231,7 +260,17 @@ export default function ConversationScreen() {
           currentUserId={currentUser?.id || ''}
           isLoading={false}
         />
-        <MessageInput onSend={handleSendMessage} disabled={isSending} />
+        {typingText && (
+          <View style={styles.typingIndicatorContainer}>
+            <Text style={styles.typingIndicatorText}>{typingText}</Text>
+          </View>
+        )}
+        <MessageInput
+          conversationId={id}
+          userId={currentUser?.id || ''}
+          onSend={handleSendMessage}
+          disabled={isSending}
+        />
       </View>
     </>
   );
@@ -247,6 +286,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 1,
+  },
+  typingIndicatorContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+  },
+  typingIndicatorText: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontStyle: 'italic',
   },
 });
 

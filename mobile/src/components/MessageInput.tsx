@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -9,22 +9,107 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getBottomSafeArea } from '../constants/layout';
+import { setTyping } from '../services/firebase-rtdb';
 
 interface MessageInputProps {
+  conversationId: string;
+  userId: string;
   onSend: (text: string) => void;
   disabled?: boolean;
 }
 
-export function MessageInput({ onSend, disabled = false }: MessageInputProps) {
+export function MessageInput({
+  conversationId,
+  userId,
+  onSend,
+  disabled = false,
+}: MessageInputProps) {
   const [text, setText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<number | null>(null);
+
+  // Clear typing indicator helper
+  const clearTypingIndicator = async () => {
+    if (isTyping) {
+      console.log('⌨️ Clearing typing indicator');
+      try {
+        await setTyping(conversationId, userId, false);
+        setIsTyping(false);
+      } catch (error) {
+        console.error('Error clearing typing indicator:', error);
+      }
+    }
+  };
+
+  // Handle text change with typing detection
+  const handleTextChange = async (newText: string) => {
+    setText(newText);
+
+    // Don't show typing indicator if text is empty
+    if (!newText.trim()) {
+      clearTypingIndicator();
+      return;
+    }
+
+    // Set typing indicator if not already set
+    if (!isTyping) {
+      console.log('⌨️ Setting typing indicator');
+      try {
+        await setTyping(conversationId, userId, true);
+        setIsTyping(true);
+      } catch (error) {
+        console.error('Error setting typing indicator:', error);
+      }
+    }
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set new timeout to clear typing indicator after 5 seconds
+    typingTimeoutRef.current = setTimeout(() => {
+      clearTypingIndicator();
+    }, 5000);
+  };
 
   const handleSend = () => {
     const trimmedText = text.trim();
     if (trimmedText && !disabled) {
+      // Clear typing indicator immediately on send
+      clearTypingIndicator();
+      
+      // Clear any pending timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
       onSend(trimmedText);
       setText('');
     }
   };
+
+  const handleBlur = () => {
+    // Clear typing indicator when input loses focus
+    clearTypingIndicator();
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      // Clear typing indicator on unmount
+      setTyping(conversationId, userId, false).catch(console.error);
+    };
+  }, [conversationId, userId]);
 
   return (
     <KeyboardAvoidingView
@@ -36,7 +121,8 @@ export function MessageInput({ onSend, disabled = false }: MessageInputProps) {
           style={styles.input}
           placeholder="Message..."
           value={text}
-          onChangeText={setText}
+          onChangeText={handleTextChange}
+          onBlur={handleBlur}
           multiline
           maxLength={5000}
           editable={!disabled}

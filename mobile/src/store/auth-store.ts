@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from '../types';
 import * as firebaseAuth from '../services/firebase-auth';
 import * as firestoreService from '../services/firebase-firestore';
+import { initializePresence, setPresence } from '../services/firebase-rtdb';
 import { User as FirebaseUser } from 'firebase/auth';
 
 interface AuthState {
@@ -96,6 +97,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
 
+      // Initialize presence system
+      console.log('🟢 Initializing presence for new user');
+      await initializePresence(firebaseUser.uid);
+
       console.log('✅ User signed up successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign up error:', error);
@@ -141,6 +146,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
 
+      // Initialize presence system
+      console.log('🟢 Initializing presence for signed-in user');
+      await initializePresence(firebaseUser.uid);
+
       console.log('✅ User signed in successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign in error:', error);
@@ -158,6 +167,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     try {
       set({ isLoading: true, error: null });
+
+      const { user } = get();
+      
+      // Set user as offline before signing out
+      if (user) {
+        console.log('🔴 Setting user offline before sign out');
+        await setPresence(user.id, false);
+      }
 
       await firebaseAuth.signOut();
 
@@ -208,6 +225,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isLoading: false,
             error: null,
           });
+
+          // Initialize presence system
+          console.log('🟢 Initializing presence for restored user');
+          await initializePresence(firebaseUser.uid);
 
           console.log('✅ Auth state restored:', user.email);
         } catch (error: any) {

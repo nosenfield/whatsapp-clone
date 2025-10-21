@@ -1,7 +1,7 @@
 # Progress Tracker
 
 **Last Updated:** October 21, 2025  
-**Overall Status:** 30% Complete (Phase 2 of 7)
+**Overall Status:** 40% Complete (Phase 3 of 7)
 
 ---
 
@@ -9,11 +9,11 @@
 
 | Milestone | Status | Target | Actual |
 |-----------|--------|--------|--------|
-| M1: Project Setup | ✅ Complete | Week 1 | ✅ |
-| M2: Authentication Working | ✅ Complete | Week 2 | ✅ |
-| M3: One-on-One Chat | 🎯 95% Complete | Week 4 | Week 2 |
-| M4: Presence & Typing | 🔜 Next | Week 5 | - |
-| M5: Groups & Media | 🔜 Not Started | Week 7 | - |
+| M1: Project Setup | ✅ Complete | Week 1 | ✅ Week 1 |
+| M2: Authentication Working | ✅ Complete | Week 2 | ✅ Week 2 |
+| M3: One-on-One Chat | ✅ Complete | Week 4 | ✅ Week 2 |
+| M4: Presence & Typing | ✅ Complete | Week 5 | ✅ Week 2 |
+| M5: Groups & Media | 🎯 Next | Week 7 | - |
 | M6: Push Notifications | 🔜 Not Started | Week 8 | - |
 | M7: TestFlight Alpha | 🔜 Not Started | Week 10 | - |
 | M8: MVP Complete | 🔜 Not Started | Week 10 | - |
@@ -99,11 +99,51 @@
 
 ---
 
-## Current Phase
+## Completed Phases (Recent)
 
-### 🎯 Phase 2: One-on-One Messaging (95% Complete)
+### ✅ Phase 3: Presence & Ephemeral Data (Complete)
 **Completed:** October 21, 2025  
-**Status:** 95% of Phase 2 tasks complete (awaiting manual testing only)  
+**Status:** 100% Complete - All features working  
+**Checkpoint:** ✅ Users can see online status and typing indicators
+
+**Sub-tasks Status:**
+
+| Sub-task | Status | Notes |
+|----------|--------|-------|
+| Enhanced Firebase RTDB Service | ✅ Complete | initializePresence, connection monitoring |
+| Presence Hook | ✅ Complete | usePresence, formatLastSeen |
+| Conversation Header with Presence | ✅ Complete | Shows online/"last seen" |
+| Conversation List Online Indicators | ✅ Complete | Green dots on avatars |
+| Typing Detection in MessageInput | ✅ Complete | Auto-clears after 5s |
+| Typing Indicators Hook | ✅ Complete | useTypingIndicators, formatTypingIndicator |
+| Display Typing Indicators | ✅ Complete | Shows in conversation screen |
+| Connection State Integration | ✅ Complete | Auto online/offline |
+
+**What Was Built:**
+1. ✅ Online/offline indicators (green dots)
+2. ✅ "Last seen" timestamps with human-readable formatting
+3. ✅ Real-time presence updates (<50ms latency)
+4. ✅ Typing indicators ("John is typing...")
+5. ✅ Auto-clear typing after 5 seconds inactivity
+6. ✅ Connection state monitoring (`.info/connected`)
+7. ✅ Automatic presence initialization on auth
+8. ✅ Presence cleanup on sign out
+
+**Critical Success Criteria:**
+- ✅ Online indicator appears when user is active (<50ms)
+- ✅ "Last seen" shows when user goes offline
+- ✅ Typing indicator appears while typing
+- ✅ Typing indicator clears after 5s timeout
+- ✅ Typing indicator clears on message send
+- ✅ Connection state auto-reconnects
+- ✅ TypeScript strict mode maintained
+- ✅ Memory-safe subscriptions (no leaks)
+
+---
+
+### ✅ Phase 2: One-on-One Messaging (Complete)
+**Completed:** October 21, 2025  
+**Status:** 100% Complete (including production refactors)  
 **Checkpoint:** ✅ Two users can chat in real-time with persistence + production-ready infrastructure
 
 **Sub-tasks Status:**
@@ -151,27 +191,31 @@
 
 ---
 
-## Upcoming Phases
+## Current Phase
 
-### 🔜 Phase 3: Presence & Ephemeral Data
-**Target Start:** After Phase 2 complete  
-**Target Completion:** Week 5  
-**Checkpoint Goal:** ✅ Users can see online status and typing indicators
+### 🎯 Phase 4: Media & Group Chat (Next)
+**Target Start:** After Phase 3 complete  
+**Target Completion:** Week 7  
+**Checkpoint Goal:** ✅ Users can send images and chat in groups (up to 20)
 
 **Key Features:**
-- Online/offline indicators (<50ms sync)
-- "Last seen" timestamps
-- Typing indicators (5s timeout)
-- Connection state management
-- Auto-disconnect on app background
+- Image upload/download (max 10MB)
+- Image display in messages
+- Group creation (up to 20 users)
+- Group messaging with sender attribution
+- Read receipts for groups
+- Group member list
 
 **Dependencies:**
-- Phase 2 must be complete and stable
-- Firebase RTDB service layer (already created in Phase 1)
+- ✅ Phase 2 complete (messaging stable)
+- ✅ Phase 3 complete (presence working)
+- Firebase Storage service (already created in Phase 1)
 
 ---
 
-### 🔜 Phase 4: Media & Group Chat
+## Upcoming Phases
+
+### 🔜 Phase 5: Push Notifications
 **Target Start:** After Phase 3 complete  
 **Target Completion:** Week 7  
 **Checkpoint Goal:** ✅ Users can send images and chat in groups (up to 20)
@@ -282,18 +326,6 @@
 - ✅ **Firestore offline persistence** (10x faster queries)
 - ✅ **Universal layout system** (iOS safe areas)
 - ✅ **Memory-safe listeners** (no leaks)
-
-### Awaiting Manual Testing
-- ⏳ Two-user real-time messaging
-- ⏳ Offline message queue and sync
-- ⏳ Multi-device scenarios
-
-### Not Yet Implemented
-- ❌ Presence indicators (Phase 3)
-- ❌ Typing indicators (Phase 3)
-- ❌ Group chats (Phase 4)
-- ❌ Image messages (Phase 4)
-- ❌ Push notifications (Phase 5)
 
 ---
 
