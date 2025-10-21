@@ -159,10 +159,29 @@ export const updateMessage = async (
     setClauses.push('readBy = ?');
     values.push(JSON.stringify(updates.readBy));
   }
-  if (updates.id && updates.localId) {
+  if (updates.id) {
     // Replace localId with server id
     setClauses.push('id = ?');
     values.push(updates.id);
+  }
+  // Update content if provided (for image uploads where URL changes)
+  if (updates.content) {
+    if (updates.content.text !== undefined) {
+      setClauses.push('contentText = ?');
+      values.push(updates.content.text);
+    }
+    if (updates.content.type !== undefined) {
+      setClauses.push('contentType = ?');
+      values.push(updates.content.type);
+    }
+    if (updates.content.mediaUrl !== undefined) {
+      setClauses.push('mediaUrl = ?');
+      values.push(updates.content.mediaUrl);
+    }
+    if (updates.content.mediaThumbnail !== undefined) {
+      setClauses.push('mediaThumbnail = ?');
+      values.push(updates.content.mediaThumbnail);
+    }
   }
 
   if (setClauses.length === 0) return;

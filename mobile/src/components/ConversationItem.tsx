@@ -25,7 +25,22 @@ export const ConversationItem = ({
   // Subscribe to other participant's presence
   const presence = usePresence(otherParticipantId);
 
-  const lastMessageText = conversation.lastMessage?.text || 'No messages yet';
+  // Format last message preview based on message type
+  const getLastMessagePreview = () => {
+    if (!conversation.lastMessage) {
+      return 'No messages yet';
+    }
+    
+    // If it's a text message with content, show it
+    if (conversation.lastMessage.text) {
+      return conversation.lastMessage.text;
+    }
+    
+    // Otherwise, it's likely a media message - show appropriate placeholder
+    return '📷 Image';
+  };
+
+  const lastMessageText = getLastMessagePreview();
   const timestamp = conversation.lastMessageAt;
 
   const formatTimestamp = (date: Date) => {

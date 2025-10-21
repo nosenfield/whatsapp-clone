@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Alert } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useMessageStore } from '../../src/store/message-store';
 import { MessageInput } from '../../src/components/MessageInput';
@@ -26,6 +27,7 @@ import { uploadImageMessage } from '../../src/services/image-service';
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const currentUser = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
   const { optimisticMessages, addOptimisticMessage, removeOptimisticMessage } =
     useMessageStore();
 
@@ -93,9 +95,30 @@ export default function ConversationScreen() {
           if (!isMounted) return;
           console.log('📨 Received messages from Firestore:', firebaseMessages.length);
 
-          // Insert all messages (INSERT OR IGNORE handles duplicates automatically)
+          // Get all existing messages to check for duplicates
+          const existingMessages = await getConversationMessages(id);
+          const existingIds = new Set(existingMessages.map((m) => m.id));
+
+          // Insert only new messages (not already in SQLite)
           for (const fbMessage of firebaseMessages) {
-            await insertMessage(fbMessage);
+            // Skip if message already exists by ID
+            if (existingIds.has(fbMessage.id)) {
+              continue;
+            }
+            
+            // Also skip if there's a message with the same localId (same temp message)
+            const isDuplicate = existingMessages.some(
+              (existing) =>
+                existing.senderId === fbMessage.senderId &&
+                existing.conversationId === fbMessage.conversationId &&
+                existing.content.text === fbMessage.content.text &&
+                existing.content.type === fbMessage.content.type &&
+                Math.abs(existing.timestamp.getTime() - fbMessage.timestamp.getTime()) < 5000 // Within 5 seconds
+            );
+            
+            if (!isDuplicate) {
+              await insertMessage(fbMessage);
+            }
           }
 
           // Reload from SQLite to get fresh data
@@ -163,6 +186,9 @@ export default function ConversationScreen() {
       // 2. Insert to SQLite
       await insertMessage(optimisticMessage);
 
+      // 2.5. Remove from optimistic store since it's now in SQLite
+      removeOptimisticMessage(localId);
+
       // 3. Reload messages from SQLite (includes the message)
       const updatedMessages = await getConversationMessages(id);
       setMessages(updatedMessages);
@@ -198,10 +224,12 @@ export default function ConversationScreen() {
         },
       });
 
-      // 7. Remove from optimistic store and reload
-      removeOptimisticMessage(localId);
+      // 7. Reload messages with updated URLs
       const finalMessages = await getConversationMessages(id);
       setMessages(finalMessages);
+
+      // 8. Invalidate conversations query to update the list
+      queryClient.invalidateQueries({ queryKey: ['conversations', currentUser.id] });
     } catch (error) {
       console.error('❌ Failed to send image:', error);
       Alert.alert(
@@ -279,6 +307,9 @@ export default function ConversationScreen() {
         // 6. Reload messages
         const finalMessages = await getConversationMessages(id);
         setMessages(finalMessages);
+
+        // 7. Invalidate conversations query to update the list
+        queryClient.invalidateQueries({ queryKey: ['conversations', currentUser.id] });
       } catch (error) {
         console.error('❌ Failed to send message to Firebase:', error);
 
@@ -334,6 +365,7 @@ export default function ConversationScreen() {
           title: otherParticipantName,
           headerShown: true,
           headerTitleAlign: 'left',
+          headerBackTitle: 'Chats',
           headerTitle: () => (
             <View>
               <Text style={styles.headerTitle}>{otherParticipantName}</Text>

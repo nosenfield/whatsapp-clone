@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useConversations } from '../../src/hooks/useConversations';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
@@ -17,8 +18,16 @@ import { Conversation } from '../../src/types';
 
 export default function ChatsScreen() {
   const currentUser = useAuthStore((state) => state.user);
-  const { data: conversations, isLoading, refetch, isRefetching } = useConversations(
+  const { data: conversations, isLoading, refetch, isRefetching, isFetching } = useConversations(
     currentUser?.id
+  );
+
+  // Refetch when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔍 Chats screen focused - refetching conversations');
+      refetch();
+    }, [refetch])
   );
 
   const handleNewChat = () => {
@@ -37,7 +46,8 @@ export default function ChatsScreen() {
     />
   );
 
-  if (isLoading && !conversations) {
+  // Show loading spinner only on initial load (not when we have cached data)
+  if ((isLoading || isFetching) && !conversations) {
     return (
       <View style={styles.container}>
         <OfflineBanner />
@@ -67,7 +77,7 @@ export default function ChatsScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
+              refreshing={isRefetching || isFetching}
               onRefresh={refetch}
               tintColor="#007AFF"
             />
