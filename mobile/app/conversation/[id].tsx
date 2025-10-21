@@ -21,6 +21,7 @@ import {
   useTypingIndicators,
   formatTypingIndicator,
 } from '../../src/hooks/useTypingIndicators';
+import { uploadImageMessage } from '../../src/services/image-service';
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -124,7 +125,95 @@ export default function ConversationScreen() {
     };
   }, [id, currentUser?.id]); // Only re-run if conversation ID or user ID changes
 
-  // Handle sending a message
+  // Handle sending an image message
+  const handleSendImage = async (imageUri: string) => {
+    if (!currentUser || !id || !conversation) {
+      Alert.alert('Error', 'Cannot send image');
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // Generate local ID for optimistic update
+      const localId = `temp_${Date.now()}_${Math.random()}`;
+      const timestamp = new Date();
+
+      // Create optimistic message with placeholder
+      const optimisticMessage: Message = {
+        id: localId,
+        localId,
+        conversationId: id,
+        senderId: currentUser.id,
+        content: {
+          text: '', // No text for image-only messages
+          type: 'image',
+          mediaUrl: imageUri, // Use local URI for immediate display
+        },
+        timestamp,
+        status: 'sending',
+        syncStatus: 'pending',
+        deliveredTo: [],
+        readBy: {},
+      };
+
+      // 1. Add to optimistic store (instant UI update)
+      addOptimisticMessage(optimisticMessage);
+
+      // 2. Insert to SQLite
+      await insertMessage(optimisticMessage);
+
+      // 3. Reload messages from SQLite (includes the message)
+      const updatedMessages = await getConversationMessages(id);
+      setMessages(updatedMessages);
+
+      // 4. Upload image to Firebase Storage
+      console.log('📤 Uploading image...');
+      const { imageUrl, thumbnailUrl } = await uploadImageMessage(id, imageUri);
+      console.log('✅ Image uploaded:', imageUrl);
+
+      // 5. Send message to Firestore with uploaded image URL
+      const serverId = await sendMessageToFirestore(id, {
+        senderId: currentUser.id,
+        content: {
+          text: '',
+          type: 'image',
+          mediaUrl: imageUrl,
+          mediaThumbnail: thumbnailUrl,
+        },
+      });
+
+      console.log('✅ Image message sent to Firebase:', serverId);
+
+      // 6. Update local message with server ID and uploaded URL
+      await updateMessage(localId, {
+        id: serverId,
+        status: 'sent',
+        syncStatus: 'synced',
+        content: {
+          text: '',
+          type: 'image',
+          mediaUrl: imageUrl,
+          mediaThumbnail: thumbnailUrl,
+        },
+      });
+
+      // 7. Remove from optimistic store and reload
+      removeOptimisticMessage(localId);
+      const finalMessages = await getConversationMessages(id);
+      setMessages(finalMessages);
+    } catch (error) {
+      console.error('❌ Failed to send image:', error);
+      Alert.alert(
+        'Failed to Send Image',
+        'Could not upload image. Please try again.'
+      );
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Handle sending a text message
   const handleSendMessage = async (text: string) => {
     if (!currentUser || !id || !conversation) {
       Alert.alert('Error', 'Cannot send message');
@@ -269,6 +358,7 @@ export default function ConversationScreen() {
           conversationId={id}
           userId={currentUser?.id || ''}
           onSend={handleSendMessage}
+          onSendImage={handleSendImage}
           disabled={isSending}
         />
       </View>
