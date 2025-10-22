@@ -488,15 +488,6 @@ Current context:
 - Current conversation: ${appContext?.currentConversationId || "none"}
 - User ID: ${appContext?.currentUserId || "unknown"}
 
-Available functions:
-- createConversation: Start a new conversation with a contact
-- findOrCreateConversation: Open existing conversation or create new one
-- sendMessageToContact: Send a message to a specific contact
-- summarizeCurrentConversation: Summarize the current conversation
-- summarizeConversation: Summarize conversation with a specific contact
-- summarizeLatestReceivedMessage: Summarize the most recent message received
-- summarizeLatestSentMessage: Summarize the most recent message sent
-
 Parse the user's command and call the appropriate function with the correct parameters.`;
 
     const response = await openai.chat.completions.create({
@@ -735,7 +726,6 @@ async function executeSendMessageToContact(params: any, currentUserId: string) {
       conversationId: conversation.id,
       senderId: currentUserId,
       content: {text: messageText, type: "text"},
-      timestamp: new Date(),
     });
 
     return {
@@ -1021,21 +1011,39 @@ async function logAICommand(data: any) {
  * @return {Promise<Object|null>} Contact data or null
  */
 async function findContactByName(contactName: string, currentUserId: string) {
+  // First try exact match
   const usersSnapshot = await admin.firestore()
     .collection("users")
     .where("displayName", "==", contactName)
     .limit(1)
     .get();
 
+  // If no exact match, try case-insensitive search
   if (usersSnapshot.empty) {
-    return null;
+    const allUsersSnapshot = await admin.firestore()
+      .collection("users")
+      .get();
+
+    const matchingUser = allUsersSnapshot.docs.find((doc) => {
+      const userData = doc.data();
+      return userData.displayName?.toLowerCase() === contactName.toLowerCase();
+    });
+
+    if (matchingUser) {
+      return {
+        id: matchingUser.id,
+        ...matchingUser.data(),
+      };
+    }
+  } else {
+    const userDoc = usersSnapshot.docs[0];
+    return {
+      id: userDoc.id,
+      ...userDoc.data(),
+    };
   }
 
-  const userDoc = usersSnapshot.docs[0];
-  return {
-    id: userDoc.id,
-    ...userDoc.data(),
-  };
+  return null;
 }
 
 /**
@@ -1092,13 +1100,31 @@ async function createConversation(participants: string[]) {
  * @return {Promise<Object>} Sent message data
  */
 async function sendMessage(messageData: any) {
+  const timestamp = admin.firestore.Timestamp.fromDate(new Date());
   const messageRef = await admin.firestore()
     .collection("conversations")
     .doc(messageData.conversationId)
     .collection("messages")
     .add({
       ...messageData,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp,
+      status: "sent",
+      deliveredTo: messageData.deliveredTo || [],
+      readBy: messageData.readBy || {},
+    });
+
+  // Update conversation's lastMessage and lastMessageAt
+  await admin.firestore()
+    .collection("conversations")
+    .doc(messageData.conversationId)
+    .update({
+      lastMessage: {
+        text: messageData.content.text,
+        senderId: messageData.senderId,
+        timestamp: timestamp,
+      },
+      lastMessageAt: timestamp,
+      updatedAt: timestamp,
     });
 
   return {
