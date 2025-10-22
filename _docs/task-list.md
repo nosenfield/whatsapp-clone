@@ -979,7 +979,7 @@ Last Updated: October 22, 2025
 - [ ] Create Firestore collection: `/actionQueue`
 - [ ] Create Firestore collection: `/conversationContext`
 - [ ] Install Vercel AI SDK in Cloud Functions
-- [ ] Configure AI model (Claude 3.5 Sonnet recommended)
+- [ ] Configure AI model (OpenAI GPT-4 recommended)
 
 ### Conversation History Embeddings (RAG Pipeline)
 - [ ] Create Cloud Function: `generateEmbeddings`
@@ -1005,7 +1005,7 @@ Last Updated: October 22, 2025
   - [ ] Create action in `/actionQueue`
   - [ ] Cloud Function processes
   - [ ] Retrieve relevant conversation history (RAG)
-  - [ ] Construct prompt for Claude
+  - [ ] Construct prompt for OpenAI
   - [ ] Stream response back to user
   - [ ] Display in chat with typing indicator
 - [ ] Add context menu to messages:

@@ -10,12 +10,21 @@ import {onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import {Expo, ExpoPushMessage, ExpoPushTicket} from "expo-server-sdk";
+import OpenAI from "openai";
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
 
 // Initialize Expo SDK
 const expo = new Expo();
+
+// Initialize OpenAI client (only if API key is available)
+let openai: OpenAI | null = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 // Set global options for all functions
 setGlobalOptions({
@@ -251,8 +260,131 @@ interface AICommandResponse {
   error?: string;
 }
 
+// OpenAI Tool Definitions
+const openaiTools = [
+  {
+    type: "function" as const,
+    function: {
+      name: "createConversation",
+      description: "Start a new conversation with a specific contact",
+      parameters: {
+        type: "object",
+        properties: {
+          contactName: {
+            type: "string",
+            description: "The name of the contact to start a conversation with",
+          },
+        },
+        required: ["contactName"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "findOrCreateConversation",
+      description: "Open an existing conversation with a contact, or create one if it doesn't exist",
+      parameters: {
+        type: "object",
+        properties: {
+          contactName: {
+            type: "string",
+            description: "The name of the contact to find or create a conversation with",
+          },
+        },
+        required: ["contactName"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "sendMessageToContact",
+      description: "Send a message to a specific contact",
+      parameters: {
+        type: "object",
+        properties: {
+          contactName: {
+            type: "string",
+            description: "The name of the contact to send a message to",
+          },
+          messageText: {
+            type: "string",
+            description: "The message text to send",
+          },
+        },
+        required: ["contactName", "messageText"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "summarizeCurrentConversation",
+      description: "Summarize the current conversation",
+      parameters: {
+        type: "object",
+        properties: {
+          timeFilter: {
+            type: "string",
+            enum: ["1day", "1week", "1month", "all"],
+            description: "Time period to summarize (1day, 1week, 1month, or all)",
+          },
+        },
+        required: ["timeFilter"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "summarizeConversation",
+      description: "Summarize a conversation with a specific contact",
+      parameters: {
+        type: "object",
+        properties: {
+          contactName: {
+            type: "string",
+            description: "The name of the contact whose conversation to summarize",
+          },
+          timeFilter: {
+            type: "string",
+            enum: ["1day", "1week", "1month", "all"],
+            description: "Time period to summarize (1day, 1week, 1month, or all)",
+          },
+        },
+        required: ["contactName", "timeFilter"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "summarizeLatestReceivedMessage",
+      description: "Summarize the most recent message received by the user",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "summarizeLatestSentMessage",
+      description: "Summarize the most recent message sent by the user",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+];
+
 /**
- * Process AI commands using Claude Sonnet 4.5
+ * Process AI commands using OpenAI GPT-4
  *
  * This function handles natural language commands and executes appropriate tools
  */
@@ -279,8 +411,8 @@ export const processAICommand = onCall(
         screen: appContext?.currentScreen,
       });
 
-      // Parse command intent using Claude
-      const parsedCommand = await parseCommandWithClaude(command, appContext);
+      // Parse command intent using OpenAI
+      const parsedCommand = await parseCommandWithOpenAI(command, appContext);
 
       if (!parsedCommand.success) {
         return {
@@ -330,163 +462,97 @@ export const processAICommand = onCall(
 );
 
 /**
- * Parse command using Claude Sonnet 4.5
+ * Parse command using OpenAI GPT-4 with function calling
  * @param {string} command The natural language command to parse
  * @param {AppContext} appContext Optional app context for parsing
  * @return {Promise<Object>} Parsed command with intent and parameters
  */
-async function parseCommandWithClaude(
+async function parseCommandWithOpenAI(
   command: string, appContext?: AppContext) {
   try {
-    // For now, we'll implement basic pattern matching
-    // In production, this would call Claude API for sophisticated parsing
-
-    const lowerCommand = command.toLowerCase();
-
-    // Conversation management patterns
-    if (lowerCommand.includes("start a new conversation with") ||
-        lowerCommand.includes("new conversation with")) {
-      const contactName = extractContactName(command, [
-        "start a new conversation with", "new conversation with",
-      ]);
+    // Check if OpenAI is available
+    if (!openai) {
+      logger.warn("OpenAI not initialized - missing API key");
       return {
-        success: true,
-        intent: {
-          action: "createConversation",
-          parameters: {contactName},
-          confidence: 0.9,
-        },
+        success: false,
+        error: "AI service not configured. Please set OPENAI_API_KEY environment variable.",
       };
     }
 
-    if (lowerCommand.includes("open my conversation with") ||
-        lowerCommand.includes("open conversation with")) {
-      const contactName = extractContactName(command, [
-        "open my conversation with",
-        "open conversation with",
-      ]);
+    // Build context-aware system message
+    const systemMessage = `You are an AI assistant for a WhatsApp-like messaging app. 
+You can help users with conversation management and message summarization.
+
+Current context:
+- Screen: ${appContext?.currentScreen || "unknown"}
+- Current conversation: ${appContext?.currentConversationId || "none"}
+- User ID: ${appContext?.currentUserId || "unknown"}
+
+Available functions:
+- createConversation: Start a new conversation with a contact
+- findOrCreateConversation: Open existing conversation or create new one
+- sendMessageToContact: Send a message to a specific contact
+- summarizeCurrentConversation: Summarize the current conversation
+- summarizeConversation: Summarize conversation with a specific contact
+- summarizeLatestReceivedMessage: Summarize the most recent message received
+- summarizeLatestSentMessage: Summarize the most recent message sent
+
+Parse the user's command and call the appropriate function with the correct parameters.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {role: "system", content: systemMessage},
+        {role: "user", content: command},
+      ],
+      tools: openaiTools,
+      tool_choice: "auto",
+      temperature: 0.1,
+    });
+
+    const message = response.choices[0]?.message;
+    if (!message) {
       return {
-        success: true,
-        intent: {
-          action: "findOrCreateConversation",
-          parameters: {contactName},
-          confidence: 0.9,
-        },
+        success: false,
+        error: "No response from OpenAI",
       };
     }
 
-    if (lowerCommand.includes("tell") && lowerCommand.includes("i'm on my way")) {
-      const contactName = extractContactName(command, ["tell"]);
-      return {
-        success: true,
-        intent: {
-          action: "sendMessageToContact",
-          parameters: {
-            contactName,
-            messageText: "I'm on my way",
+    // Check if OpenAI wants to call a function
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      const toolCall = message.tool_calls[0];
+      if (toolCall.type === "function") {
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+
+        return {
+          success: true,
+          intent: {
+            action: functionName,
+            parameters: functionArgs,
+            confidence: 0.95,
           },
-          confidence: 0.9,
-        },
-      };
+        };
+      }
     }
 
-    // Summarization patterns
-    if (lowerCommand.includes("summarize this conversation")) {
-      return {
-        success: true,
-        intent: {
-          action: "summarizeCurrentConversation",
-          parameters: {timeFilter: "all"},
-          confidence: 0.9,
-        },
-      };
-    }
-
-    if (lowerCommand.includes("summarize my recent conversation with")) {
-      const contactName = extractContactName(command, [
-        "summarize my recent conversation with",
-      ]);
-      const timeFilter = extractTimeFilter(command);
-      return {
-        success: true,
-        intent: {
-          action: "summarizeConversation",
-          parameters: {contactName, timeFilter},
-          confidence: 0.8,
-        },
-      };
-    }
-
-    if (lowerCommand.includes("summarize the most recent message")) {
-      return {
-        success: true,
-        intent: {
-          action: "summarizeLatestReceivedMessage",
-          parameters: {},
-          confidence: 0.8,
-        },
-      };
-    }
-
-    if (lowerCommand.includes("summarize my most recent message")) {
-      return {
-        success: true,
-        intent: {
-          action: "summarizeLatestSentMessage",
-          parameters: {},
-          confidence: 0.8,
-        },
-      };
-    }
-
+    // If no function call, return a helpful response
     return {
-      success: false,
-      error: "Command not recognized",
+      success: true,
+      intent: {
+        action: "no_action",
+        parameters: {},
+        confidence: 0.8,
+        response: message.content || "I understand your request but couldn't determine a specific action to take.",
+      },
     };
   } catch (error) {
-    logger.error("Error parsing command with Claude", {error});
+    logger.error("Error parsing command with OpenAI", {error});
     return {
       success: false,
       error: "Failed to parse command",
     };
   }
-}
-
-/**
- * Extract contact name from command
- * @param {string} command The command text
- * @param {string[]} patterns Array of patterns to search for
- * @return {string} The extracted contact name
- */
-function extractContactName(command: string, patterns: string[]): string {
-  for (const pattern of patterns) {
-    const index = command.toLowerCase().indexOf(pattern.toLowerCase());
-    if (index !== -1) {
-      const afterPattern = command.substring(index + pattern.length).trim();
-      // Take the first word after the pattern as the contact name
-      return afterPattern.split(" ")[0];
-    }
-  }
-  return "";
-}
-
-/**
- * Extract time filter from command
- * @param {string} command The command text
- * @return {string} The time filter (1day, 1week, 1month, all)
- */
-function extractTimeFilter(command: string): "1day" | "1week" | "1month" | "all" {
-  const lowerCommand = command.toLowerCase();
-  if (lowerCommand.includes("1 day") || lowerCommand.includes("one day")) {
-    return "1day";
-  }
-  if (lowerCommand.includes("1 week") || lowerCommand.includes("one week")) {
-    return "1week";
-  }
-  if (lowerCommand.includes("1 month") || lowerCommand.includes("one month")) {
-    return "1month";
-  }
-  return "all";
 }
 
 /**
@@ -1090,21 +1156,57 @@ async function summarizeConversationMessages(
     };
   }
 
-  // For now, return a simple summary
-  // In production, this would call Claude API for sophisticated summarization
+  // Use OpenAI to generate a sophisticated summary
   const messageTexts = messages
     .filter((msg) => (msg as any).content?.type === "text")
     .map((msg) => (msg as any).content?.text || "")
-    .join(" ");
+    .join("\n");
 
-  const summary = messageTexts.length > 200 ?
-    messageTexts.substring(0, 197) + "..." :
-    messageTexts;
+  try {
+    // Check if OpenAI is available
+    if (!openai) {
+      logger.warn("OpenAI not initialized - falling back to simple summary");
+      const summary = messageTexts.length > 200 ?
+        messageTexts.substring(0, 197) + "..." :
+        messageTexts;
+      return {
+        text: `Conversation summary: ${summary}`,
+        messageCount: messages.length,
+      };
+    }
 
-  return {
-    text: `Conversation summary: ${summary}`,
-    messageCount: messages.length,
-  };
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant that summarizes conversations. Provide a concise, informative summary of the key points discussed.",
+        },
+        {
+          role: "user",
+          content: `Please summarize this conversation:\n\n${messageTexts}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 300,
+    });
+
+    const summary = response.choices[0]?.message?.content || "Unable to generate summary.";
+    return {
+      text: summary,
+      messageCount: messages.length,
+    };
+  } catch (error) {
+    logger.error("Error generating conversation summary with OpenAI", {error});
+    // Fallback to simple truncation
+    const summary = messageTexts.length > 200 ?
+      messageTexts.substring(0, 197) + "..." :
+      messageTexts;
+    return {
+      text: `Conversation summary: ${summary}`,
+      messageCount: messages.length,
+    };
+  }
 }
 
 /**
@@ -1113,15 +1215,48 @@ async function summarizeConversationMessages(
  * @return {Promise<Object>} Summary data
  */
 async function summarizeMessage(messageText: string) {
-  // For now, return a simple summary
-  // In production, this would call Claude API for sophisticated summarization
-  const summary = messageText.length > 100 ?
-    messageText.substring(0, 97) + "..." :
-    messageText;
+  try {
+    // Check if OpenAI is available
+    if (!openai) {
+      logger.warn("OpenAI not initialized - falling back to simple summary");
+      const summary = messageText.length > 100 ?
+        messageText.substring(0, 97) + "..." :
+        messageText;
+      return {
+        text: `Message summary: ${summary}`,
+      };
+    }
 
-  return {
-    text: `Message summary: ${summary}`,
-  };
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant that summarizes messages. Provide a concise summary of the key points in the message.",
+        },
+        {
+          role: "user",
+          content: `Please summarize this message:\n\n${messageText}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 150,
+    });
+
+    const summary = response.choices[0]?.message?.content || "Unable to generate summary.";
+    return {
+      text: summary,
+    };
+  } catch (error) {
+    logger.error("Error generating message summary with OpenAI", {error});
+    // Fallback to simple truncation
+    const summary = messageText.length > 100 ?
+      messageText.substring(0, 97) + "..." :
+      messageText;
+    return {
+      text: `Message summary: ${summary}`,
+    };
+  }
 }
 
 /**

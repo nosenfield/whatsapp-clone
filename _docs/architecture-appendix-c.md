@@ -111,7 +111,7 @@ This document defines the architecture for AI-powered contextual commands in the
 │               External Services                                 │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │  Anthropic API (Claude Sonnet 4.5)                       │ │
+│  │  OpenAI API (GPT-4)                                        │ │
 │  │  • Command parsing and intent recognition                 │ │
 │  │  • Tool calling                                          │ │
 │  │  • Message summarization                                 │ │
@@ -295,8 +295,8 @@ Command sent to Cloud Function with context
 export const processAICommand = functions.https.onCall(async (data, context) => {
   const { command, appContext, currentUserId } = data;
   
-  // 1. Parse command with Claude
-  const parsedCommand = await parseCommandWithClaude(command, appContext);
+  // 1. Parse command with OpenAI
+  const parsedCommand = await parseCommandWithOpenAI(command, appContext);
   
   // 2. Select appropriate tool
   const tool = selectTool(parsedCommand.intent);
