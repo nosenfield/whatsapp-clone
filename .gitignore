@@ -320,4 +320,4 @@ sentry.properties
 # End of .gitignore
 # ============================================
 
-_temp/
+_temp/*.backup

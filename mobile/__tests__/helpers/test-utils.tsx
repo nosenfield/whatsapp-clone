@@ -12,7 +12,7 @@ const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
     defaultOptions: {
       queries: {
         retry: false, // Don't retry in tests
-        cacheTime: 0, // Don't cache in tests
+        gcTime: 0, // Don't cache in tests (React Query v5: renamed from cacheTime)
       },
     },
   });
