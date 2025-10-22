@@ -7,6 +7,8 @@ import { useMessageStore } from '../../src/store/message-store';
 import { MessageInput } from '../../src/components/MessageInput';
 import { MessageList } from '../../src/components/MessageList';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
+import { AICommandButton } from '../../src/components/AICommandButton';
+import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Message, Conversation } from '../../src/types';
 import { getConversationById } from '../../src/services/conversation-service';
 import { subscribeToMessages } from '../../src/services/firebase-firestore';
@@ -31,6 +33,7 @@ export default function ConversationScreen() {
   const queryClient = useQueryClient();
   const { optimisticMessages, addOptimisticMessage, removeOptimisticMessage } =
     useMessageStore();
+  const aiContext = useAICommandContext();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -438,6 +441,12 @@ export default function ConversationScreen() {
           onSendImage={handleSendImage}
           disabled={isSending}
         />
+        
+        {/* AI Command Button */}
+        <AICommandButton 
+          appContext={aiContext}
+          style={styles.aiFab}
+        />
       </View>
     </>
   );
@@ -473,6 +482,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
     fontStyle: 'italic',
+  },
+  aiFab: {
+    position: 'absolute',
+    bottom: 100, // Position above the message input
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#34C759', // Green color for AI
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
 

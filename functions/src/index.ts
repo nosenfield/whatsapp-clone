@@ -6,6 +6,7 @@
 
 import {setGlobalOptions} from "firebase-functions";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import {onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import {Expo, ExpoPushMessage, ExpoPushTicket} from "expo-server-sdk";
@@ -223,6 +224,1047 @@ export const sendMessageNotification = onDocumentCreated(
     }
   }
 );
+
+// AI Command Processing Types
+interface AppContext {
+  currentScreen: "chats" | "conversation" | "profile" | "settings";
+  currentConversationId?: string;
+  currentUserId: string;
+  recentConversations: string[];
+  deviceInfo: {
+    platform: "ios" | "android";
+    version: string;
+  };
+}
+
+interface AICommandRequest {
+  command: string;
+  appContext: AppContext;
+  currentUserId: string;
+}
+
+interface AICommandResponse {
+  success: boolean;
+  result: any;
+  response: string;
+  action: "navigate_to_conversation" | "show_summary" | "show_error" | "no_action";
+  error?: string;
+}
+
+/**
+ * Process AI commands using Claude Sonnet 4.5
+ *
+ * This function handles natural language commands and executes appropriate tools
+ */
+export const processAICommand = onCall(
+  {cors: true},
+  async (request): Promise<AICommandResponse> => {
+    try {
+      const {command, appContext, currentUserId} = request.data as AICommandRequest;
+
+      // Validate request
+      if (!command || !currentUserId) {
+        return {
+          success: false,
+          result: null,
+          response: "Invalid request: missing command or user ID",
+          action: "show_error",
+          error: "Missing required parameters",
+        };
+      }
+
+      logger.info("Processing AI command", {
+        command: command.substring(0, 100), // Log first 100 chars
+        userId: currentUserId,
+        screen: appContext?.currentScreen,
+      });
+
+      // Parse command intent using Claude
+      const parsedCommand = await parseCommandWithClaude(command, appContext);
+
+      if (!parsedCommand.success) {
+        return {
+          success: false,
+          result: null,
+          response: "Sorry, I couldn't understand that command.",
+          action: "show_error",
+          error: parsedCommand.error,
+        };
+      }
+
+      // Execute the appropriate tool
+      const toolResult = await executeTool(parsedCommand.intent, currentUserId, appContext);
+
+      // Generate response
+      const response = await generateResponse(toolResult, parsedCommand.intent);
+
+      // Log the command for audit purposes
+      await logAICommand({
+        userId: currentUserId,
+        command,
+        parsedIntent: parsedCommand.intent,
+        result: toolResult,
+        timestamp: new Date(),
+        appContext,
+      });
+
+      return {
+        success: true,
+        result: toolResult,
+        response,
+        action: (toolResult.action as
+          "navigate_to_conversation" | "show_summary" | "show_error" |
+          "no_action") || "no_action",
+      };
+    } catch (error) {
+      logger.error("Error processing AI command", {error});
+      return {
+        success: false,
+        result: null,
+        response: "Sorry, I encountered an error processing your command.",
+        action: "show_error",
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+);
+
+/**
+ * Parse command using Claude Sonnet 4.5
+ * @param {string} command The natural language command to parse
+ * @param {AppContext} appContext Optional app context for parsing
+ * @return {Promise<Object>} Parsed command with intent and parameters
+ */
+async function parseCommandWithClaude(
+  command: string, appContext?: AppContext) {
+  try {
+    // For now, we'll implement basic pattern matching
+    // In production, this would call Claude API for sophisticated parsing
+
+    const lowerCommand = command.toLowerCase();
+
+    // Conversation management patterns
+    if (lowerCommand.includes("start a new conversation with") ||
+        lowerCommand.includes("new conversation with")) {
+      const contactName = extractContactName(command, [
+        "start a new conversation with", "new conversation with",
+      ]);
+      return {
+        success: true,
+        intent: {
+          action: "createConversation",
+          parameters: {contactName},
+          confidence: 0.9,
+        },
+      };
+    }
+
+    if (lowerCommand.includes("open my conversation with") ||
+        lowerCommand.includes("open conversation with")) {
+      const contactName = extractContactName(command, [
+        "open my conversation with",
+        "open conversation with",
+      ]);
+      return {
+        success: true,
+        intent: {
+          action: "findOrCreateConversation",
+          parameters: {contactName},
+          confidence: 0.9,
+        },
+      };
+    }
+
+    if (lowerCommand.includes("tell") && lowerCommand.includes("i'm on my way")) {
+      const contactName = extractContactName(command, ["tell"]);
+      return {
+        success: true,
+        intent: {
+          action: "sendMessageToContact",
+          parameters: {
+            contactName,
+            messageText: "I'm on my way",
+          },
+          confidence: 0.9,
+        },
+      };
+    }
+
+    // Summarization patterns
+    if (lowerCommand.includes("summarize this conversation")) {
+      return {
+        success: true,
+        intent: {
+          action: "summarizeCurrentConversation",
+          parameters: {timeFilter: "all"},
+          confidence: 0.9,
+        },
+      };
+    }
+
+    if (lowerCommand.includes("summarize my recent conversation with")) {
+      const contactName = extractContactName(command, [
+        "summarize my recent conversation with",
+      ]);
+      const timeFilter = extractTimeFilter(command);
+      return {
+        success: true,
+        intent: {
+          action: "summarizeConversation",
+          parameters: {contactName, timeFilter},
+          confidence: 0.8,
+        },
+      };
+    }
+
+    if (lowerCommand.includes("summarize the most recent message")) {
+      return {
+        success: true,
+        intent: {
+          action: "summarizeLatestReceivedMessage",
+          parameters: {},
+          confidence: 0.8,
+        },
+      };
+    }
+
+    if (lowerCommand.includes("summarize my most recent message")) {
+      return {
+        success: true,
+        intent: {
+          action: "summarizeLatestSentMessage",
+          parameters: {},
+          confidence: 0.8,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      error: "Command not recognized",
+    };
+  } catch (error) {
+    logger.error("Error parsing command with Claude", {error});
+    return {
+      success: false,
+      error: "Failed to parse command",
+    };
+  }
+}
+
+/**
+ * Extract contact name from command
+ * @param {string} command The command text
+ * @param {string[]} patterns Array of patterns to search for
+ * @return {string} The extracted contact name
+ */
+function extractContactName(command: string, patterns: string[]): string {
+  for (const pattern of patterns) {
+    const index = command.toLowerCase().indexOf(pattern.toLowerCase());
+    if (index !== -1) {
+      const afterPattern = command.substring(index + pattern.length).trim();
+      // Take the first word after the pattern as the contact name
+      return afterPattern.split(" ")[0];
+    }
+  }
+  return "";
+}
+
+/**
+ * Extract time filter from command
+ * @param {string} command The command text
+ * @return {string} The time filter (1day, 1week, 1month, all)
+ */
+function extractTimeFilter(command: string): "1day" | "1week" | "1month" | "all" {
+  const lowerCommand = command.toLowerCase();
+  if (lowerCommand.includes("1 day") || lowerCommand.includes("one day")) {
+    return "1day";
+  }
+  if (lowerCommand.includes("1 week") || lowerCommand.includes("one week")) {
+    return "1week";
+  }
+  if (lowerCommand.includes("1 month") || lowerCommand.includes("one month")) {
+    return "1month";
+  }
+  return "all";
+}
+
+/**
+ * Execute the appropriate tool based on parsed intent
+ * @param {Object} intent The parsed command intent
+ * @param {string} currentUserId The current user ID
+ * @param {AppContext} appContext Optional app context
+ * @return {Promise<Object>} Tool execution result
+ */
+async function executeTool(
+  intent: any, currentUserId: string, appContext?: AppContext) {
+  try {
+    switch (intent.action) {
+    case "createConversation":
+      return await executeCreateConversation(
+        intent.parameters, currentUserId);
+
+    case "findOrCreateConversation":
+      return await executeFindOrCreateConversation(
+        intent.parameters, currentUserId);
+
+    case "sendMessageToContact":
+      return await executeSendMessageToContact(
+        intent.parameters, currentUserId);
+
+    case "summarizeCurrentConversation":
+      return await executeSummarizeCurrentConversation(
+        intent.parameters, currentUserId, appContext);
+
+    case "summarizeConversation":
+      return await executeSummarizeConversation(intent.parameters, currentUserId);
+
+    case "summarizeLatestReceivedMessage":
+      return await executeSummarizeLatestReceivedMessage(currentUserId, appContext);
+
+    case "summarizeLatestSentMessage":
+      return await executeSummarizeLatestSentMessage(currentUserId, appContext);
+
+    default:
+      return {
+        success: false,
+        error: "Unknown action",
+        action: "show_error",
+      };
+    }
+  } catch (error) {
+    logger.error("Error executing tool", {error, intent});
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Tool execution failed",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Create a new conversation with a contact
+ * @param {Object} params Tool parameters
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object>} Creation result
+ */
+async function executeCreateConversation(params: any, currentUserId: string) {
+  try {
+    const {contactName} = params;
+
+    // Find contact by display name
+    const contact = await findContactByName(contactName, currentUserId);
+    if (!contact) {
+      return {
+        success: false,
+        error: `Contact "${contactName}" not found`,
+        action: "show_error",
+      };
+    }
+
+    // Check if conversation already exists
+    const existingConversation = await findConversation(currentUserId, contact.id);
+    if (existingConversation) {
+      return {
+        success: true,
+        conversationId: existingConversation.id,
+        wasCreated: false,
+        action: "navigate_to_conversation",
+      };
+    }
+
+    // Create new conversation
+    const conversation = await createConversation([currentUserId, contact.id]);
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+      wasCreated: true,
+      action: "navigate_to_conversation",
+    };
+  } catch (error) {
+    logger.error("Error creating conversation", {error, params});
+    return {
+      success: false,
+      error: "Failed to create conversation",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Find or create conversation with contact
+ * @param {Object} params Tool parameters
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object>} Find/create result
+ */
+async function executeFindOrCreateConversation(params: any, currentUserId: string) {
+  try {
+    const {contactName} = params;
+
+    // Find contact by display name
+    const contact = await findContactByName(contactName, currentUserId);
+    if (!contact) {
+      return {
+        success: false,
+        error: `Contact "${contactName}" not found`,
+        action: "show_error",
+      };
+    }
+
+    // Find existing conversation
+    let conversation = await findConversation(currentUserId, contact.id);
+    let wasCreated = false;
+
+    // Create if doesn't exist
+    if (!conversation) {
+      conversation = await createConversation([currentUserId, contact.id]);
+      wasCreated = true;
+    }
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+      wasCreated,
+      action: "navigate_to_conversation",
+    };
+  } catch (error) {
+    logger.error("Error finding or creating conversation", {error, params});
+    return {
+      success: false,
+      error: "Failed to find or create conversation",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Send message to contact
+ * @param {Object} params Tool parameters
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object>} Send result
+ */
+async function executeSendMessageToContact(params: any, currentUserId: string) {
+  try {
+    const {contactName, messageText} = params;
+
+    // Find contact by display name
+    const contact = await findContactByName(contactName, currentUserId);
+    if (!contact) {
+      return {
+        success: false,
+        error: `Contact "${contactName}" not found`,
+        action: "show_error",
+      };
+    }
+
+    // Find or create conversation
+    let conversation = await findConversation(currentUserId, contact.id);
+    if (!conversation) {
+      conversation = await createConversation([currentUserId, contact.id]);
+    }
+
+    // Send message
+    const message = await sendMessage({
+      conversationId: conversation.id,
+      senderId: currentUserId,
+      content: {text: messageText, type: "text"},
+      timestamp: new Date(),
+    });
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+      messageId: message.id,
+      action: "navigate_to_conversation",
+    };
+  } catch (error) {
+    logger.error("Error sending message to contact", {error, params});
+    return {
+      success: false,
+      error: "Failed to send message",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Summarize current conversation
+ * @param {Object} params Tool parameters
+ * @param {string} currentUserId The current user ID
+ * @param {AppContext} appContext Optional app context
+ * @return {Promise<Object>} Summarization result
+ */
+async function executeSummarizeCurrentConversation(
+  params: any, currentUserId: string, appContext?: AppContext) {
+  try {
+    const {timeFilter = "all"} = params;
+    const conversationId = appContext?.currentConversationId;
+
+    if (!conversationId) {
+      return {
+        success: false,
+        error: "No current conversation to summarize",
+        action: "show_error",
+      };
+    }
+
+    const summary = await summarizeConversationMessages(conversationId, timeFilter);
+
+    return {
+      success: true,
+      summary: summary.text,
+      messageCount: summary.messageCount,
+      timeRange: timeFilter,
+      action: "show_summary",
+    };
+  } catch (error) {
+    logger.error("Error summarizing current conversation", {error, params});
+    return {
+      success: false,
+      error: "Failed to summarize conversation",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Summarize conversation with contact
+ * @param {Object} params Tool parameters
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object>} Summarization result
+ */
+async function executeSummarizeConversation(params: any, currentUserId: string) {
+  try {
+    const {contactName, timeFilter = "all"} = params;
+
+    // Find contact by display name
+    const contact = await findContactByName(contactName, currentUserId);
+    if (!contact) {
+      return {
+        success: false,
+        error: `Contact "${contactName}" not found`,
+        action: "show_error",
+      };
+    }
+
+    // Find conversation
+    const conversation = await findConversation(currentUserId, contact.id);
+    if (!conversation) {
+      return {
+        success: false,
+        error: `No conversation found with ${contactName}`,
+        action: "show_error",
+      };
+    }
+
+    const summary = await summarizeConversationMessages(conversation.id, timeFilter);
+
+    return {
+      success: true,
+      summary: summary.text,
+      messageCount: summary.messageCount,
+      timeRange: timeFilter,
+      action: "show_summary",
+    };
+  } catch (error) {
+    logger.error("Error summarizing conversation", {error, params});
+    return {
+      success: false,
+      error: "Failed to summarize conversation",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Summarize latest received message
+ * @param {string} currentUserId The current user ID
+ * @param {AppContext} appContext Optional app context
+ * @return {Promise<Object>} Summarization result
+ */
+async function executeSummarizeLatestReceivedMessage(
+  currentUserId: string, appContext?: AppContext) {
+  try {
+    const conversationId = appContext?.currentConversationId;
+
+    if (conversationId) {
+      // Summarize latest message in current conversation
+      const latestMessage = await getLatestReceivedMessage(conversationId, currentUserId);
+      if (!latestMessage) {
+        return {
+          success: false,
+          error: "No recent messages found",
+          action: "show_error",
+        };
+      }
+
+      const summary = await summarizeMessage((latestMessage as any).content?.text || "");
+
+      return {
+        success: true,
+        summary: summary.text,
+        originalMessage: (latestMessage as any).content?.text || "",
+        action: "show_summary",
+      };
+    } else {
+      // Summarize latest message across all conversations
+      const latestMessage = await getLatestReceivedMessageGlobally(currentUserId);
+      if (!latestMessage) {
+        return {
+          success: false,
+          error: "No recent messages found",
+          action: "show_error",
+        };
+      }
+
+      const summary = await summarizeMessage((latestMessage as any).content?.text || "");
+
+      return {
+        success: true,
+        summary: summary.text,
+        originalMessage: (latestMessage as any).content?.text || "",
+        action: "show_summary",
+      };
+    }
+  } catch (error) {
+    logger.error("Error summarizing latest received message", {error});
+    return {
+      success: false,
+      error: "Failed to summarize latest message",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Tool: Summarize latest sent message
+ * @param {string} currentUserId The current user ID
+ * @param {AppContext} appContext Optional app context
+ * @return {Promise<Object>} Summarization result
+ */
+async function executeSummarizeLatestSentMessage(
+  currentUserId: string, appContext?: AppContext) {
+  try {
+    const conversationId = appContext?.currentConversationId;
+
+    if (conversationId) {
+      // Summarize latest sent message in current conversation
+      const latestMessage = await getLatestSentMessage(conversationId, currentUserId);
+      if (!latestMessage) {
+        return {
+          success: false,
+          error: "No recent messages found",
+          action: "show_error",
+        };
+      }
+
+      const summary = await summarizeMessage((latestMessage as any).content?.text || "");
+
+      return {
+        success: true,
+        summary: summary.text,
+        originalMessage: (latestMessage as any).content?.text || "",
+        action: "show_summary",
+      };
+    } else {
+      // Summarize latest sent message across all conversations
+      const latestMessage = await getLatestSentMessageGlobally(currentUserId);
+      if (!latestMessage) {
+        return {
+          success: false,
+          error: "No recent messages found",
+          action: "show_error",
+        };
+      }
+
+      const summary = await summarizeMessage((latestMessage as any).content?.text || "");
+
+      return {
+        success: true,
+        summary: summary.text,
+        originalMessage: (latestMessage as any).content?.text || "",
+        action: "show_summary",
+      };
+    }
+  } catch (error) {
+    logger.error("Error summarizing latest sent message", {error});
+    return {
+      success: false,
+      error: "Failed to summarize latest message",
+      action: "show_error",
+    };
+  }
+}
+
+/**
+ * Generate response text for the user
+ * @param {Object} toolResult The tool execution result
+ * @param {Object} intent The parsed command intent
+ * @return {Promise<string>} Generated response text
+ */
+async function generateResponse(toolResult: any, intent: any): Promise<string> {
+  if (!toolResult.success) {
+    return toolResult.error || "Sorry, I couldn't complete that request.";
+  }
+
+  switch (intent.action) {
+  case "createConversation":
+  case "findOrCreateConversation":
+    return `I've opened your conversation${toolResult.wasCreated ? " (created new)" : ""}.`;
+
+  case "sendMessageToContact":
+    return `I've sent your message to ${intent.parameters.contactName}.`;
+
+  case "summarizeCurrentConversation":
+  case "summarizeConversation":
+    return `Here's a summary of your conversation (${toolResult.messageCount} messages): ${toolResult.summary}`;
+
+  case "summarizeLatestReceivedMessage":
+  case "summarizeLatestSentMessage":
+    return `Here's a summary of that message: ${toolResult.summary}`;
+
+  default:
+    return "Command completed successfully.";
+  }
+}
+
+/**
+ * Log AI command for audit purposes
+ * @param {Object} data Command data to log
+ * @return {Promise<void>}
+ */
+async function logAICommand(data: any) {
+  try {
+    await admin.firestore().collection("aiCommands").add({
+      ...data,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    logger.error("Error logging AI command", {error});
+    // Don't throw - logging failure shouldn't break the command
+  }
+}
+
+// Helper functions for database operations
+
+/**
+ * Find contact by display name
+ * @param {string} contactName The contact display name
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object|null>} Contact data or null
+ */
+async function findContactByName(contactName: string, currentUserId: string) {
+  const usersSnapshot = await admin.firestore()
+    .collection("users")
+    .where("displayName", "==", contactName)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) {
+    return null;
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  return {
+    id: userDoc.id,
+    ...userDoc.data(),
+  };
+}
+
+/**
+ * Find conversation between two users
+ * @param {string} userId1 First user ID
+ * @param {string} userId2 Second user ID
+ * @return {Promise<Object|null>} Conversation data or null
+ */
+async function findConversation(userId1: string, userId2: string) {
+  // Find direct conversation between two users
+  const conversationsSnapshot = await admin.firestore()
+    .collection("conversations")
+    .where("type", "==", "direct")
+    .where("participants", "array-contains", userId1)
+    .get();
+
+  for (const doc of conversationsSnapshot.docs) {
+    const data = doc.data();
+    if (data.participants.includes(userId2)) {
+      return {
+        id: doc.id,
+        ...data,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Create a new conversation
+ * @param {string[]} participants Array of participant user IDs
+ * @return {Promise<Object>} Created conversation data
+ */
+async function createConversation(participants: string[]) {
+  const conversationData = {
+    type: participants.length === 2 ? "direct" : "group",
+    participants,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const docRef = await admin.firestore().collection("conversations").add(conversationData);
+
+  return {
+    id: docRef.id,
+    ...conversationData,
+  };
+}
+
+/**
+ * Send a message to a conversation
+ * @param {Object} messageData Message data to send
+ * @return {Promise<Object>} Sent message data
+ */
+async function sendMessage(messageData: any) {
+  const messageRef = await admin.firestore()
+    .collection("conversations")
+    .doc(messageData.conversationId)
+    .collection("messages")
+    .add({
+      ...messageData,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+  return {
+    id: messageRef.id,
+    ...messageData,
+  };
+}
+
+/**
+ * Summarize conversation messages
+ * @param {string} conversationId The conversation ID
+ * @param {string} timeFilter Time filter for messages
+ * @return {Promise<Object>} Summary data
+ */
+async function summarizeConversationMessages(
+  conversationId: string, timeFilter: string) {
+  // Get messages based on time filter
+  let query = admin.firestore()
+    .collection("conversations")
+    .doc(conversationId)
+    .collection("messages")
+    .orderBy("timestamp", "desc");
+
+  if (timeFilter !== "all") {
+    const now = new Date();
+    let cutoffDate: Date;
+
+    switch (timeFilter) {
+    case "1day":
+      cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case "1week":
+      cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case "1month":
+      cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      cutoffDate = new Date(0);
+    }
+
+    query = query.where("timestamp", ">=", cutoffDate);
+  }
+
+  const messagesSnapshot = await query.limit(50).get();
+  const messages = messagesSnapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+  if (messages.length === 0) {
+    return {
+      text: "No messages found in the specified time range.",
+      messageCount: 0,
+    };
+  }
+
+  // For now, return a simple summary
+  // In production, this would call Claude API for sophisticated summarization
+  const messageTexts = messages
+    .filter((msg) => (msg as any).content?.type === "text")
+    .map((msg) => (msg as any).content?.text || "")
+    .join(" ");
+
+  const summary = messageTexts.length > 200 ?
+    messageTexts.substring(0, 197) + "..." :
+    messageTexts;
+
+  return {
+    text: `Conversation summary: ${summary}`,
+    messageCount: messages.length,
+  };
+}
+
+/**
+ * Summarize a single message
+ * @param {string} messageText The message text to summarize
+ * @return {Promise<Object>} Summary data
+ */
+async function summarizeMessage(messageText: string) {
+  // For now, return a simple summary
+  // In production, this would call Claude API for sophisticated summarization
+  const summary = messageText.length > 100 ?
+    messageText.substring(0, 97) + "..." :
+    messageText;
+
+  return {
+    text: `Message summary: ${summary}`,
+  };
+}
+
+/**
+ * Get latest received message in conversation
+ * @param {string} conversationId The conversation ID
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object|null>} Latest message or null
+ */
+async function getLatestReceivedMessage(
+  conversationId: string, currentUserId: string) {
+  const messagesSnapshot = await admin.firestore()
+    .collection("conversations")
+    .doc(conversationId)
+    .collection("messages")
+    .where("senderId", "!=", currentUserId)
+    .orderBy("senderId")
+    .orderBy("timestamp", "desc")
+    .limit(1)
+    .get();
+
+  if (messagesSnapshot.empty) {
+    return null;
+  }
+
+  const doc = messagesSnapshot.docs[0];
+  return {
+    id: doc.id,
+    ...doc.data(),
+  };
+}
+
+/**
+ * Get latest received message globally
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object|null>} Latest message or null
+ */
+async function getLatestReceivedMessageGlobally(currentUserId: string) {
+  // This is a simplified implementation
+  // In production, you'd need a more sophisticated query
+  const conversationsSnapshot = await admin.firestore()
+    .collection("conversations")
+    .where("participants", "array-contains", currentUserId)
+    .limit(10)
+    .get();
+
+  let latestMessage = null;
+  let latestTimestamp = null;
+
+  for (const convDoc of conversationsSnapshot.docs) {
+    const messagesSnapshot = await admin.firestore()
+      .collection("conversations")
+      .doc(convDoc.id)
+      .collection("messages")
+      .where("senderId", "!=", currentUserId)
+      .orderBy("senderId")
+      .orderBy("timestamp", "desc")
+      .limit(1)
+      .get();
+
+    if (!messagesSnapshot.empty) {
+      const message = messagesSnapshot.docs[0].data();
+      if (!latestTimestamp || message.timestamp > latestTimestamp) {
+        latestMessage = {
+          id: messagesSnapshot.docs[0].id,
+          ...message,
+        };
+        latestTimestamp = message.timestamp;
+      }
+    }
+  }
+
+  return latestMessage;
+}
+
+/**
+ * Get latest sent message in conversation
+ * @param {string} conversationId The conversation ID
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object|null>} Latest message or null
+ */
+async function getLatestSentMessage(
+  conversationId: string, currentUserId: string) {
+  const messagesSnapshot = await admin.firestore()
+    .collection("conversations")
+    .doc(conversationId)
+    .collection("messages")
+    .where("senderId", "==", currentUserId)
+    .orderBy("timestamp", "desc")
+    .limit(1)
+    .get();
+
+  if (messagesSnapshot.empty) {
+    return null;
+  }
+
+  const doc = messagesSnapshot.docs[0];
+  return {
+    id: doc.id,
+    ...doc.data(),
+  };
+}
+
+/**
+ * Get latest sent message globally
+ * @param {string} currentUserId The current user ID
+ * @return {Promise<Object|null>} Latest message or null
+ */
+async function getLatestSentMessageGlobally(currentUserId: string) {
+  // This is a simplified implementation
+  // In production, you'd need a more sophisticated query
+  const conversationsSnapshot = await admin.firestore()
+    .collection("conversations")
+    .where("participants", "array-contains", currentUserId)
+    .limit(10)
+    .get();
+
+  let latestMessage = null;
+  let latestTimestamp = null;
+
+  for (const convDoc of conversationsSnapshot.docs) {
+    const messagesSnapshot = await admin.firestore()
+      .collection("conversations")
+      .doc(convDoc.id)
+      .collection("messages")
+      .where("senderId", "==", currentUserId)
+      .orderBy("timestamp", "desc")
+      .limit(1)
+      .get();
+
+    if (!messagesSnapshot.empty) {
+      const message = messagesSnapshot.docs[0].data();
+      if (!latestTimestamp || message.timestamp > latestTimestamp) {
+        latestMessage = {
+          id: messagesSnapshot.docs[0].id,
+          ...message,
+        };
+        latestTimestamp = message.timestamp;
+      }
+    }
+  }
+
+  return latestMessage;
+}
 
 /**
  * Clean up old notification receipts (optional maintenance function)
