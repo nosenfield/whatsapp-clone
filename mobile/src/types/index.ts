@@ -6,6 +6,7 @@ export interface User {
   photoURL?: string;
   pushToken?: string;
   pushTokenUpdatedAt?: Date;
+  notificationsEnabled?: boolean; // Whether push notifications are enabled (default: true)
   createdAt: Date;
   lastActive: Date;
   preferences?: {

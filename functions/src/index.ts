@@ -103,7 +103,13 @@ export const sendMessageNotification = onDocumentCreated(
 
       recipientDocs.forEach((doc) => {
         const userData = doc.data();
-        if (userData.pushToken && Expo.isExpoPushToken(userData.pushToken)) {
+        // Check if user has push token, notifications enabled, and valid Expo token
+        const notificationsEnabled = userData.notificationsEnabled !== false; // Default to true if not set
+        if (
+          userData.pushToken &&
+          Expo.isExpoPushToken(userData.pushToken) &&
+          notificationsEnabled
+        ) {
           pushTokens.push(userData.pushToken);
           recipientNames[userData.pushToken] = userData.displayName || "User";
         }

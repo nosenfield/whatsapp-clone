@@ -1,10 +1,56 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
+import { useState, useEffect } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth-store';
+import * as firestoreService from '../../src/services/firebase-firestore';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuthStore();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isUpdatingPrefs, setIsUpdatingPrefs] = useState(false);
+
+  // Load notification preferences
+  useEffect(() => {
+    if (user?.id) {
+      loadNotificationPreferences();
+    }
+  }, [user?.id]);
+
+  const loadNotificationPreferences = async () => {
+    try {
+      if (!user) return;
+      
+      const userData = await firestoreService.getUser(user.id);
+      if (userData?.notificationsEnabled !== undefined) {
+        setNotificationsEnabled(userData.notificationsEnabled);
+      }
+    } catch (error) {
+      console.error('Error loading notification preferences:', error);
+    }
+  };
+
+  const toggleNotifications = async (enabled: boolean) => {
+    if (!user || isUpdatingPrefs) return;
+
+    try {
+      setIsUpdatingPrefs(true);
+      setNotificationsEnabled(enabled);
+
+      await firestoreService.updateUser(user.id, {
+        notificationsEnabled: enabled,
+      });
+
+      console.log(`✅ Notifications ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Error updating notification preferences:', error);
+      // Revert on error
+      setNotificationsEnabled(!enabled);
+      Alert.alert('Error', 'Failed to update notification settings');
+    } finally {
+      setIsUpdatingPrefs(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -64,13 +110,19 @@ export default function ProfileScreen() {
 
         <View style={styles.separator} />
 
-        <TouchableOpacity style={styles.option} onPress={() => {}}>
+        <View style={styles.option}>
           <View style={styles.optionLeft}>
             <MaterialIcons name="notifications" size={24} color="#007AFF" />
-            <Text style={styles.optionText}>Notifications</Text>
+            <Text style={styles.optionText}>Push Notifications</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={24} color="#C7C7CC" />
-        </TouchableOpacity>
+          <Switch
+            value={notificationsEnabled}
+            onValueChange={toggleNotifications}
+            disabled={isUpdatingPrefs}
+            trackColor={{ false: '#E5E5EA', true: '#34C759' }}
+            thumbColor="#fff"
+          />
+        </View>
 
         <View style={styles.separator} />
 
