@@ -1326,6 +1326,2108 @@ function canBeAutomated(solution: Solution): boolean {
 
 ---
 
+## RAG Pipeline Architecture
+
+### Purpose and Integration
+
+The **RAG (Retrieval-Augmented Generation) pipeline** provides conversation history context to all AI features, enabling smarter, context-aware assistance.
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Message Flow with RAG                       │
+│                                                                 │
+│  User sends message                                            │
+│         │                                                       │
+│         ├──[Path 1: Standard Flow]──► Firestore ──► Real-time sync
+│         │                                                       │
+│         └──[Path 2: Background Embedding]                      │
+│                     │                                           │
+│                     ▼                                           │
+│           ┌─────────────────────────┐                          │
+│           │ shouldEmbed() check     │                          │
+│           │ • Length > 10 chars     │                          │
+│           │ • Not just emojis       │                          │
+│           │ • Has semantic value    │                          │
+│           └────────┬────────────────┘                          │
+│                    │ YES                                        │
+│                    ▼                                            │
+│           ┌─────────────────────────┐                          │
+│           │ OpenAI Embeddings API   │                          │
+│           │ text-embedding-3-small  │                          │
+│           │ → 1536-dim vector       │                          │
+│           └────────┬────────────────┘                          │
+│                    │                                            │
+│                    ▼                                            │
+│           ┌─────────────────────────┐                          │
+│           │   Pinecone Index        │                          │
+│           │   "conversation-history"│                          │
+│           │                          │                          │
+│           │ Store with metadata:    │                          │
+│           │ • messageId             │                          │
+│           │ • conversationId        │                          │
+│           │ • timestamp             │                          │
+│           │ • messageType           │                          │
+│           │ • hasEvent (boolean)    │                          │
+│           │ • hasDecision (boolean) │                          │
+│           └─────────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI Feature Query Flow                        │
+│                                                                 │
+│  AI Feature needs context (e.g., Decision Summarization)       │
+│         │                                                       │
+│         ├──► Construct semantic query                          │
+│         │    e.g., "decisions about weekend plans"             │
+│         │                                                       │
+│         ├──► Generate query embedding                           │
+│         │    (OpenAI text-embedding-3-small)                   │
+│         │                                                       │
+│         ├──► Query Pinecone                                    │
+│         │    • Top-K similarity search (K=10)                  │
+│         │    • Filter by conversationId                        │
+│         │    • Filter by messageType (optional)                │
+│         │    • Returns: messageIds + similarity scores         │
+│         │                                                       │
+│         ├──► Fetch full messages from Firestore                │
+│         │    (Batch read for efficiency)                       │
+│         │                                                       │
+│         ├──► Rank by relevance + recency                       │
+│         │    (Combine similarity score with timestamp)         │
+│         │                                                       │
+│         └──► Include in AI prompt as context                   │
+│              "Here's what was discussed before:"               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Data Models
+
+#### Message Embeddings Collection
+
+```typescript
+// /messageEmbeddings/{messageId}
+interface MessageEmbedding {
+  messageId: string;
+  conversationId: string;
+  embeddedAt: Timestamp;
+  model: 'text-embedding-3-small';
+  vectorId: string;               // Pinecone vector ID (same as messageId)
+  
+  // Metadata for debugging
+  textLength: number;
+  messageType: 'event' | 'decision' | 'question' | 'statement';
+  hasEvent: boolean;
+  hasDecision: boolean;
+}
+```
+
+#### Pinecone Vector Schema
+
+```typescript
+interface PineconeVector {
+  id: string;                     // messageId
+  values: number[];               // 1536-dim embedding
+  metadata: {
+    conversationId: string;
+    senderId: string;
+    timestamp: number;            // Unix milliseconds
+    messageType: string;
+    hasEvent: boolean;
+    hasDecision: boolean;
+    textPreview: string;          // First 100 chars for debugging
+  };
+}
+```
+
+### RAG Integration Points
+
+#### 1. Decision Summarization
+```typescript
+async function summarizeDecisions(conversationId: string) {
+  // Query: Find messages about decisions and agreements
+  const relevantHistory = await searchConversationHistory(
+    "decisions agreements plans confirmed",
+    conversationId,
+    10
+  );
+  
+  const contextualPrompt = `
+RELEVANT CONVERSATION HISTORY:
+${formatMessagesForContext(relevantHistory)}
+
+Based on the above history and the recent messages below, 
+summarize any decisions that have been made.
+
+RECENT MESSAGES:
+${formatRecentMessages()}
+`;
+  
+  return await callClaudeAPI(contextualPrompt);
+}
+```
+
+#### 2. Proactive Conflict Detection
+```typescript
+async function detectConflictsWithContext(newEvent: CalendarEvent) {
+  // Query: Find similar past events
+  const similarEvents = await searchConversationHistory(
+    `${newEvent.title} ${newEvent.location} ${newEvent.participants.join(' ')}`,
+    newEvent.conversationId,
+    5
+  );
+  
+  const contextualPrompt = `
+NEW EVENT: ${newEvent.title} on ${newEvent.date}
+
+SIMILAR PAST EVENTS:
+${formatEventsForContext(similarEvents)}
+
+This appears to be a recurring event. When suggesting conflict resolution:
+1. Consider if this is part of a regular schedule
+2. Check if similar events were successfully held before
+3. Suggest consistent timing based on past patterns
+`;
+  
+  return await generateConflictSolutions(contextualPrompt);
+}
+```
+
+#### 3. Smart RSVP Reminders
+```typescript
+async function shouldSendRSVPReminder(trackerId: string): Promise<boolean> {
+  const tracker = await getRSVPTracker(trackerId);
+  
+  // Query: Check if this person usually responds quickly
+  const pastRSVPs = await searchConversationHistory(
+    `${tracker.userId} RSVP response invitation`,
+    tracker.conversationId,
+    5
+  );
+  
+  // Calculate average response time
+  const avgResponseTime = calculateAverageResponseTime(pastRSVPs);
+  
+  // Don't nag fast responders too early
+  if (avgResponseTime < 24 * 3600 * 1000) {  // 24 hours
+    return false;  // Give them time
+  }
+  
+  return true;  // Send reminder
+}
+```
+
+### Performance Optimizations
+
+#### Embedding Batching
+```typescript
+// Process embeddings in batches to reduce API calls
+export const batchGenerateEmbeddings = functions.pubsub
+  .schedule('every 15 minutes')
+  .onRun(async () => {
+    // Get messages without embeddings
+    const pendingMessages = await firestore
+      .collection('pendingEmbeddings')
+      .limit(100)
+      .get();
+    
+    if (pendingMessages.empty) return;
+    
+    // Batch embed (OpenAI supports up to 2048 inputs per request)
+    const texts = pendingMessages.docs.map(doc => doc.data().text);
+    const embeddings = await batchGenerateEmbeddings(texts);
+    
+    // Upload to Pinecone in batch
+    const vectors = embeddings.map((embedding, i) => ({
+      id: pendingMessages.docs[i].id,
+      values: embedding,
+      metadata: pendingMessages.docs[i].data().metadata
+    }));
+    
+    await pinecone.upsert(vectors);
+    
+    // Clean up pending queue
+    const batch = firestore.batch();
+    pendingMessages.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  });
+```
+
+#### Query Caching
+```typescript
+interface RAGCache {
+  queryHash: string;              // Hash of query + conversationId
+  results: string[];              // messageIds
+  cachedAt: Timestamp;
+  expiresAt: Timestamp;
+  hitCount: number;
+}
+
+async function searchWithCache(
+  query: string,
+  conversationId: string
+): Promise<string[]> {
+  const cacheKey = hashQuery(query, conversationId);
+  
+  // Check cache
+  const cached = await getRAGCache(cacheKey);
+  if (cached && cached.expiresAt.toDate() > new Date()) {
+    console.log('✅ RAG cache hit');
+    await incrementHitCount(cacheKey);
+    return cached.results;
+  }
+  
+  // Query Pinecone
+  const results = await searchConversationHistory(query, conversationId);
+  
+  // Cache results (5 minute TTL)
+  await cacheRAGResults(cacheKey, results, 300);
+  
+  return results;
+}
+```
+
+### Cost Analysis
+
+| Component | Usage per User/Month | Unit Cost | Monthly Cost |
+|-----------|---------------------|-----------|--------------|
+| **Embedding Generation** | 100 messages | $0.0001/1K tokens | $0.015 |
+| **Pinecone Storage** | 1000 vectors | $0.096/1M vectors | $0.096 |
+| **Pinecone Queries** | 50 searches | $0.04/1K queries | $0.002 |
+| **Query Embeddings** | 50 queries | $0.0001/1K tokens | $0.0075 |
+| **Total RAG** | - | - | **$0.12/user** |
+
+**Total AI Cost with RAG: $0.31/user/month** (previous $0.19 + $0.12)
+
+### Scaling Considerations
+
+#### For 100 Users
+- **Messages/day**: ~50/user = 5,000 total
+- **Embeddings/day**: ~2,500 (50% worth embedding)
+- **Storage**: ~150K vectors total
+- **Queries/day**: ~250 (5 features × 50 users × 0.1 query rate)
+
+**Costs at 100 users: $31/month for RAG**
+
+#### For 10,000 Users
+- **Embeddings/month**: ~1.5M
+- **Storage**: ~15M vectors
+- **Queries/month**: ~750K
+- **Cost**: ~$3,100/month
+- **Optimization needed**: Implement TTL, archive old embeddings
+
+### Monitoring Metrics
+
+```typescript
+interface RAGMetrics {
+  // Usage
+  embeddingsGenerated: number;
+  queriesExecuted: number;
+  cacheHitRate: number;           // %
+  
+  // Performance
+  avgEmbeddingTime: number;       // ms
+  avgQueryTime: number;           // ms
+  
+  // Quality
+  avgSimilarityScore: number;     // 0-1
+  queriesWithNoResults: number;
+  
+  // Cost
+  embeddingCost: number;          // USD
+  storageCost: number;
+  queryCost: number;
+}
+```
+
+### Testing RAG Pipeline
+
+#### Unit Tests
+- [ ] Embedding generation for various message types
+- [ ] Semantic search accuracy (manual validation)
+- [ ] Metadata filtering correctness
+- [ ] Cache behavior (hit/miss)
+
+#### Integration Tests
+- [ ] End-to-end: Message → Embedding → Query → Context
+- [ ] Cross-conversation search for users
+- [ ] Context enhancement for AI prompts
+- [ ] Performance under load (100 concurrent queries)
+
+#### Quality Tests
+- [ ] Search for "dentist appointment" finds correct messages
+- [ ] Search ignores irrelevant casual chat
+- [ ] Recency bias works (recent results ranked higher)
+- [ ] Multi-turn conversations grouped correctly
+
+**Checkpoint**: ✅ RAG pipeline provides relevant context to all AI features
+
+---
+
+## Google Calendar Integration
+
+### Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      WhatsApp Clone App                          │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Event Extracted from Message                               │ │
+│  │  /extractedEvents/{eventId}                                 │ │
+│  │         │                                                    │ │
+│  │         ├──► User Views Event Card                          │ │
+│  │         │    • "Add to Google Calendar" button              │ │
+│  │         │    • "Auto-sync" toggle in settings               │ │
+│  │         │                                                    │ │
+│  │         └──► User Action Triggers                           │ │
+│  │              │                                               │ │
+│  │              ├─[Manual]─► exportToGoogleCalendar()         │ │
+│  │              │                                               │ │
+│  │              └─[Auto]───► If autoSync enabled               │ │
+│  └──────────────────┬──────────────────────────────────────────┘ │
+│                     │                                             │
+└─────────────────────┼─────────────────────────────────────────────┘
+                      │
+                      │ OAuth 2.0 + Callable Cloud Function
+                      │
+┌─────────────────────▼──────────────────────────────────────────────┐
+│                  Cloud Functions Layer                             │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  exportToGoogleCalendar (Callable Function)                  │ │
+│  │  1. Verify user authentication                               │ │
+│  │  2. Fetch event from Firestore                               │ │
+│  │  3. Initialize Google Calendar API with user's OAuth token   │ │
+│  │  4. Create event with metadata                               │ │
+│  │  5. Update Firestore with Google Calendar ID                 │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  syncGoogleCalendar (Scheduled - Optional Phase 2)           │ │
+│  │  Runs every 6 hours:                                         │ │
+│  │  1. Fetch events modified in Google Calendar                 │ │
+│  │  2. Update /extractedEvents if changes detected              │ │
+│  │  3. Optionally import external events                        │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬───────────────────────────────────────────┘
+                         │
+                         │ Google Calendar API v3
+                         │
+┌────────────────────────▼───────────────────────────────────────────┐
+│                    Google Calendar                                 │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  Primary Calendar (or Family Calendar)                       │ │
+│  │                                                               │ │
+│  │  Event created with:                                         │ │
+│  │  • summary: event.title                                      │ │
+│  │  • description: "Extracted from conversation..."             │ │
+│  │  • start/end: event.date + time                              │ │
+│  │  • location: event.location                                  │ │
+│  │  • reminders: [1 hour, 15 min]                               │ │
+│  │  • extendedProperties:                                       │ │
+│  │     - appEventId: {eventId}                                  │ │
+│  │     - appMessageId: {messageId}                              │ │
+│  │     - appConversationId: {conversationId}                    │ │
+│  │                                                               │ │
+│  │  [Event is now visible in Google Calendar app]               │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### OAuth 2.0 Flow
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    First-Time Setup                              │
+│                                                                  │
+│  User: "Connect Google Calendar" (in Profile settings)          │
+│         │                                                        │
+│         ▼                                                        │
+│  GoogleSignin.signIn()                                          │
+│         │                                                        │
+│         ├──► Opens Google OAuth consent screen                  │
+│         │    "Allow WhatsApp Clone to access your Calendar?"    │
+│         │                                                        │
+│         ├──[User Approves]                                      │
+│         │                                                        │
+│         └──► Returns:                                           │
+│              • accessToken (valid 1 hour)                       │
+│              • refreshToken (valid indefinitely)                │
+│              • email                                            │
+│                                                                  │
+│  Store in Firestore /users/{userId}:                           │
+│  • googleCalendarConnected: true                                │
+│  • googleRefreshToken: {encrypted}                              │
+│  • googleEmail: user@gmail.com                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                  Subsequent Exports                              │
+│                                                                  │
+│  User: "Add to Google Calendar"                                 │
+│         │                                                        │
+│         ├──► getGoogleAccessToken()                             │
+│         │    • Check if cached token still valid                │
+│         │    • If expired: Use refreshToken to get new one      │
+│         │                                                        │
+│         ├──► Call Cloud Function with accessToken               │
+│         │                                                        │
+│         └──► Event created in Google Calendar                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Data Model Extensions
+
+#### Extended Calendar Event
+
+```typescript
+// Extension to /extractedEvents/{eventId}
+interface CalendarEventExtensions {
+  // Google Calendar sync
+  googleCalendarId?: string;      // ID in Google Calendar
+  googleCalendarSyncedAt?: Timestamp;
+  googleCalendarEventLink?: string;  // HTML link to event
+  syncStatus: 'not_synced' | 'syncing' | 'synced' | 'failed';
+  syncError?: string;
+  lastSyncAttempt?: Timestamp;
+  
+  // Auto-sync settings
+  autoSyncEnabled: boolean;       // Per-event override
+}
+```
+
+#### User Extensions
+
+```typescript
+// Extension to /users/{userId}
+interface UserGoogleCalendarSettings {
+  googleCalendar?: {
+    connected: boolean;
+    email: string;
+    refreshToken: string;         // Encrypted
+    connectedAt: Timestamp;
+    lastSyncAt?: Timestamp;
+    
+    // Preferences
+    autoSync: boolean;             // Auto-add extracted events
+    defaultCalendarId: string;     // "primary" or specific calendar ID
+    importExternalEvents: boolean; // Import non-app events (Phase 2)
+    
+    // Sync stats
+    eventsExported: number;
+    lastExportAt?: Timestamp;
+  };
+}
+```
+
+### Bidirectional Sync (Phase 2)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│         Scheduled: syncGoogleCalendar (every 6 hours)            │
+│                                                                  │
+│  For each user with Google Calendar connected:                  │
+│         │                                                        │
+│         ├──[1]──► Fetch events modified since last sync         │
+│         │         (Use updatedMin parameter)                    │
+│         │                                                        │
+│         ├──[2]──► For each Google Calendar event:               │
+│         │         │                                             │
+│         │         ├──► Check extendedProperties.appEventId     │
+│         │         │                                             │
+│         │         ├─[Has appEventId]──► This is our event      │
+│         │         │    │                                        │
+│         │         │    ├──► Compare with /extractedEvents      │
+│         │         │    │                                        │
+│         │         │    ├─[Changed]──► Update Firestore         │
+│         │         │    │    • New time/date                    │
+│         │         │    │    • New location                     │
+│         │         │    │    • Cancelled status                 │
+│         │         │    │                                        │
+│         │         │    └─[Deleted]──► Soft delete in Firestore│
+│         │         │                                             │
+│         │         └─[No appEventId]──► External event          │
+│         │              │                                        │
+│         │              └─[Import enabled]──► Create in app     │
+│         │                   • Add to /extractedEvents          │
+│         │                   • Post notification to user        │
+│         │                                                       │
+│         └──[3]──► Update lastSyncAt timestamp                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Conflict Resolution Strategy
+
+When syncing changes from Google Calendar:
+
+```typescript
+enum SyncConflictResolution {
+  GOOGLE_WINS,      // Default: Google Calendar is source of truth
+  APP_WINS,         // User changed in app after export
+  MANUAL_RESOLVE    // Ask user to resolve conflict
+}
+
+async function handleSyncConflict(
+  appEvent: CalendarEvent,
+  googleEvent: GoogleCalendarEvent
+): Promise<void> {
+  // Compare timestamps
+  const appModifiedAt = appEvent.updatedAt.toDate();
+  const googleModifiedAt = new Date(googleEvent.updated);
+  
+  // If Google Calendar changed more recently
+  if (googleModifiedAt > appModifiedAt) {
+    // Update app event from Google Calendar
+    await updateEventFromGoogle(appEvent.id, googleEvent);
+    
+    // Notify user of change
+    await sendPushNotification(appEvent.hostUserId, {
+      title: 'Event Updated',
+      body: `${appEvent.title} was changed in Google Calendar`,
+      data: { eventId: appEvent.id }
+    });
+  } else {
+    // App is more recent, re-export to Google Calendar
+    await exportToGoogleCalendar(appEvent.id);
+  }
+}
+```
+
+### Security & Privacy
+
+#### Token Storage
+```typescript
+// Encrypt refresh token before storing
+import * as Crypto from 'expo-crypto';
+
+async function storeRefreshToken(
+  userId: string,
+  refreshToken: string
+): Promise<void> {
+  const encrypted = await encryptToken(refreshToken);
+  
+  await firestore.collection('users').doc(userId).update({
+    'googleCalendar.refreshToken': encrypted,
+    'googleCalendar.connectedAt': FieldValue.serverTimestamp()
+  });
+}
+
+async function getRefreshToken(userId: string): Promise<string> {
+  const userDoc = await firestore.collection('users').doc(userId).get();
+  const encrypted = userDoc.data()?.googleCalendar?.refreshToken;
+  
+  if (!encrypted) throw new Error('Not connected to Google Calendar');
+  
+  return await decryptToken(encrypted);
+}
+```
+
+#### Permissions & Scopes
+- **Minimal scope**: Only `https://www.googleapis.com/auth/calendar` (not `calendar.readonly`)
+- **User control**: User can disconnect at any time
+- **Revocation**: Handle gracefully when user revokes access in Google settings
+- **Audit trail**: Log all calendar operations
+
+### Testing
+
+#### OAuth Flow Tests
+- [ ] User connects Google Calendar successfully
+- [ ] Access token refreshes automatically when expired
+- [ ] Graceful handling when user revokes permission
+- [ ] Multiple users with different Google accounts
+
+#### Export Tests
+- [ ] Event exports to correct calendar (primary vs custom)
+- [ ] Extended properties stored correctly
+- [ ] Reminders set correctly
+- [ ] Event appears in Google Calendar web/mobile
+- [ ] Button shows "Synced" after successful export
+
+#### Bidirectional Sync Tests (Phase 2)
+- [ ] Event changed in Google Calendar → Updates in app
+- [ ] Event deleted in Google Calendar → Soft deleted in app
+- [ ] External event created → Imported to app (if enabled)
+- [ ] Conflict resolution works correctly
+
+#### Error Handling Tests
+- [ ] Network failure during export → Retry logic
+- [ ] Invalid OAuth token → Re-authenticate prompt
+- [ ] Google Calendar API rate limit → Backoff and retry
+- [ ] User disconnects mid-sync → Clean state
+
+### Cost Analysis
+
+| Operation | Frequency | API Calls | Cost |
+|-----------|-----------|-----------|------|
+| **OAuth Token Refresh** | 1/hour/user | 1 | Free |
+| **Event Export** | ~10/user/month | 10 | Free |
+| **Bidirectional Sync** | 4/day/user | 4 | Free |
+| **Total** | - | ~130/user/month | **$0** |
+
+**Google Calendar API Free Tier: 1M requests/day**  
+At 10K users: ~1.3M requests/month = ~43K/day ✅ Well within limit
+
+### Performance Optimizations
+
+#### Batch Operations
+```typescript
+// Export multiple events in one Cloud Function call
+export const batchExportToGoogleCalendar = functions.https.onCall(
+  async (data: { eventIds: string[] }, context) => {
+    const results = await Promise.allSettled(
+      data.eventIds.map(id => exportSingleEvent(id, context.auth.uid))
+    );
+    
+    return {
+      success: results.filter(r => r.status === 'fulfilled').length,
+      failed: results.filter(r => r.status === 'rejected').length
+    };
+  }
+);
+```
+
+#### Smart Sync
+```typescript
+// Only sync events that changed recently
+async function smartSync(userId: string) {
+  const lastSync = await getLastSyncTime(userId);
+  
+  // Fetch only events modified since last sync
+  const response = await calendar.events.list({
+    calendarId: 'primary',
+    updatedMin: lastSync.toISOString(),
+    maxResults: 100
+  });
+  
+  // Process only changed events
+  const changedEvents = response.data.items || [];
+  await processChangedEvents(userId, changedEvents);
+}
+```
+
+**Checkpoint**: ✅ Seamless Google Calendar integration with bidirectional sync
+
+---
+
+## Alternative: n8n for Third-Party Integrations
+
+### Strategic Consideration: Native vs. n8n Approach
+
+**Current Architecture**: Direct Google Calendar API integration via Cloud Functions  
+**Alternative**: n8n workflow automation platform for integrations
+
+### Architecture Comparison
+
+#### **Option A: Native Integration (Current Design)**
+```
+App → Cloud Function → Google Calendar API → Google Calendar
+```
+
+**Pros:**
+- ✅ Full control over integration logic
+- ✅ Lowest latency (direct API calls)
+- ✅ No additional infrastructure dependencies
+- ✅ Type-safe with TypeScript end-to-end
+- ✅ Easier debugging (single codebase)
+- ✅ No additional costs
+
+**Cons:**
+- ❌ Need to implement each integration from scratch
+- ❌ OAuth management per service
+- ❌ More code to maintain
+- ❌ Harder to add new integrations
+
+#### **Option B: n8n Integration Platform**
+```
+App → Webhook → n8n Workflow → Google Calendar/Slack/Notion/etc.
+```
+
+**Pros:**
+- ✅ **Visual workflow builder** - Non-developers can modify
+- ✅ **300+ pre-built integrations** - Calendar, Slack, Notion, Trello, Todoist, etc.
+- ✅ **Rapid prototyping** - Add new integrations in minutes
+- ✅ **Centralized OAuth** - n8n handles authentication
+- ✅ **Built-in error handling** - Retry logic, failure notifications
+- ✅ **Webhook support** - Easy bidirectional sync
+- ✅ **Self-hosted option** - Data stays in your infrastructure
+
+**Cons:**
+- ❌ Additional infrastructure to manage (Docker container)
+- ❌ Extra latency (webhook → n8n → API)
+- ❌ Another service to monitor/maintain
+- ❌ Learning curve for n8n workflow syntax
+- ❌ Potential single point of failure
+- ❌ Cost: Self-hosted ($0) or Cloud (starts at $20/month)
+
+### Recommended Hybrid Approach
+
+**Phase 1 (MVP): Native Google Calendar Integration**
+- Start with direct Cloud Functions for Google Calendar
+- Validate user need and usage patterns
+- Keep it simple for initial launch
+
+**Phase 2 (Scale): n8n for Additional Integrations**
+- Once Google Calendar integration is validated
+- Use n8n to rapidly add more integrations
+- Let n8n handle the "long tail" of integrations
+
+### n8n Architecture for Busy Parents
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      WhatsApp Clone App                          │
+│                                                                  │
+│  Event Extracted → POST to n8n webhook                          │
+│                     /webhook/event-extracted                     │
+│                                                                  │
+│  Decision Made → POST to n8n webhook                            │
+│                  /webhook/decision-made                          │
+│                                                                  │
+│  Deadline Created → POST to n8n webhook                         │
+│                     /webhook/deadline-created                    │
+└────────────────────────┬─────────────────────────────────────────┘
+                         │
+                         │ HTTPS Webhooks
+                         │
+┌────────────────────────▼─────────────────────────────────────────┐
+│                    n8n Workflow Engine                           │
+│                    (Self-hosted Docker)                          │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Workflow 1: Event → Calendar Sync                         │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │ Webhook Trigger                                       │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ Filter: Only confirmed events                         │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ Branch:                                               │  │ │
+│  │  │   ├─→ Google Calendar (create event)                 │  │ │
+│  │  │   ├─→ Apple Calendar (if user has iOS)               │  │ │
+│  │  │   └─→ Outlook Calendar (if user has Office 365)      │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ HTTP Request: POST back to app with sync status      │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Workflow 2: Decision → Task Management                   │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │ Webhook Trigger                                       │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ Extract action items from decision                    │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ For each action item:                                 │  │ │
+│  │  │   ├─→ Todoist (create task)                          │  │ │
+│  │  │   ├─→ Notion (add to family board)                   │  │ │
+│  │  │   └─→ Trello (create card)                           │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Workflow 3: Deadline → Multi-Channel Reminders          │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │ Schedule Trigger (daily at 9am)                       │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ HTTP Request: GET upcoming deadlines from app         │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ For each deadline due today:                          │  │ │
+│  │  │   ├─→ Slack (send DM to assigned person)             │  │ │
+│  │  │   ├─→ Email (send reminder)                          │  │ │
+│  │  │   └─→ SMS via Twilio (if urgent)                     │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Workflow 4: RSVP → Group Notifications                  │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │ Webhook Trigger (RSVP received)                       │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ Update Google Sheets (RSVP tracker)                   │  │ │
+│  │  │   ↓                                                   │  │ │
+│  │  │ If all responses received:                            │  │ │
+│  │  │   └─→ Slack (notify organizer + send summary)        │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+                         │
+                         │ Multiple API Integrations
+                         ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   Third-Party Services                           │
+│                                                                  │
+│  [Google Calendar] [Apple Calendar] [Outlook] [Notion]          │
+│  [Todoist] [Trello] [Slack] [Email] [SMS] [Zapier] [IFTTT]     │
+│  [Airtable] [Asana] [Monday.com] [ClickUp] [Linear]             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation with n8n
+
+#### Setup Infrastructure
+```yaml
+# docker-compose.yml for self-hosted n8n
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://n8n.yourdomain.com/
+      - GENERIC_TIMEZONE=America/New_York
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/.n8n/workflows
+
+volumes:
+  n8n_data:
+```
+
+#### App Integration Layer
+```typescript
+// functions/src/services/n8n-integration.ts
+
+interface N8nWebhookPayload {
+  eventType: 'event_extracted' | 'decision_made' | 'deadline_created' | 'rsvp_received';
+  data: any;
+  userId: string;
+  conversationId: string;
+  timestamp: string;
+}
+
+export async function triggerN8nWorkflow(
+  workflowType: string,
+  data: any
+): Promise<void> {
+  const webhookUrl = `${process.env.N8N_HOST}/webhook/${workflowType}`;
+  
+  const payload: N8nWebhookPayload = {
+    eventType: workflowType as any,
+    data,
+    userId: data.userId,
+    conversationId: data.conversationId,
+    timestamp: new Date().toISOString()
+  };
+  
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.N8N_API_KEY}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`n8n webhook failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    console.log('✅ n8n workflow triggered:', result);
+    
+  } catch (error) {
+    console.error('❌ n8n webhook error:', error);
+    // Fallback: Continue with direct integration
+    await fallbackDirectIntegration(workflowType, data);
+  }
+}
+
+// Example: Trigger n8n when event is extracted
+export const onEventExtracted = functions.firestore
+  .document('extractedEvents/{eventId}')
+  .onCreate(async (snap, context) => {
+    const event = snap.data() as CalendarEvent;
+    
+    // Check if user has n8n integrations enabled
+    const user = await getUser(event.hostUserId);
+    if (!user.preferences.n8nEnabled) {
+      return;  // Use direct integration
+    }
+    
+    // Trigger n8n workflow
+    await triggerN8nWorkflow('event-extracted', {
+      eventId: context.params.eventId,
+      ...event
+    });
+  });
+```
+
+#### n8n Workflow Example (JSON Config)
+```json
+{
+  "name": "Calendar Event Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "event-extracted",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"data\"][\"status\"]}}",
+              "operation": "equals",
+              "value2": "confirmed"
+            }
+          ]
+        }
+      },
+      "name": "Filter Confirmed Only",
+      "type": "n8n-nodes-base.if",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "event",
+        "operation": "create",
+        "calendarId": "primary",
+        "start": "={{$json[\"data\"][\"date\"]}}",
+        "end": "={{$json[\"data\"][\"date\"]}}",
+        "summary": "={{$json[\"data\"][\"title\"]}}",
+        "description": "Extracted from conversation",
+        "location": "={{$json[\"data\"][\"location\"]}}"
+      },
+      "name": "Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "1",
+          "name": "Google Calendar OAuth"
+        }
+      },
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.APP_WEBHOOK_URL}}/calendar-sync-status",
+        "options": {
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "eventId",
+                "value": "={{$json[\"data\"][\"eventId\"]}}"
+              },
+              {
+                "name": "googleCalendarId",
+                "value": "={{$json[\"id\"]}}"
+              },
+              {
+                "name": "status",
+                "value": "synced"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Notify App",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Filter Confirmed Only", "type": "main", "index": 0}]]
+    },
+    "Filter Confirmed Only": {
+      "main": [[{"node": "Google Calendar", "type": "main", "index": 0}]]
+    },
+    "Google Calendar": {
+      "main": [[{"node": "Notify App", "type": "main", "index": 0}]]
+    }
+  }
+}
+```
+
+### Advanced Use Cases with n8n
+
+#### 1. Multi-Calendar Sync
+```
+Event Created 
+    ↓
+n8n Workflow:
+    ├─→ Google Calendar (personal)
+    ├─→ Apple Calendar (family shared)
+    ├─→ Outlook (work)
+    └─→ Family Dashboard (Notion)
+```
+
+#### 2. Smart Task Distribution
+```
+Decision with Action Items
+    ↓
+n8n Workflow:
+    ├─→ Parse action items with AI
+    ├─→ Assign based on person mentioned
+    ├─→ For Mom: Add to Todoist
+    ├─→ For Dad: Add to Trello
+    └─→ Notify via Slack DM
+```
+
+#### 3. RSVP Aggregation
+```
+RSVP Received
+    ↓
+n8n Workflow:
+    ├─→ Update Google Sheets tracker
+    ├─→ If 80% responded: Send Slack summary
+    ├─→ If 100% responded: Finalize event in all calendars
+    └─→ If deadline passed: Send reminder to non-responders
+```
+
+#### 4. Deadline Cascade
+```
+Deadline Created
+    ↓
+n8n Workflow:
+    ├─→ Create Google Calendar event
+    ├─→ Add to Todoist with subtasks
+    ├─→ Schedule Slack reminders (24h, 2h before)
+    └─→ If urgent: Send SMS via Twilio
+```
+
+### Decision Matrix: When to Use n8n
+
+| Scenario | Native | n8n | Recommendation |
+|----------|--------|-----|----------------|
+| **Google Calendar only** | ✅ Simple | ❌ Overkill | Native |
+| **2-3 integrations** | ⚠️ Moderate | ✅ Easy | Either |
+| **5+ integrations** | ❌ Complex | ✅ Perfect | n8n |
+| **Frequent changes** | ❌ Code changes | ✅ Visual editor | n8n |
+| **Non-dev team members** | ❌ Need devs | ✅ Self-serve | n8n |
+| **Low latency critical** | ✅ Direct | ❌ Extra hop | Native |
+| **MVP/prototype** | ✅ Faster start | ⚠️ Infrastructure | Native |
+| **Scale (10K+ users)** | ✅ Proven | ⚠️ Needs testing | Native |
+
+### Recommended Implementation Path
+
+#### **Phase 1: MVP (Week 1-8)**
+**Use Native Integration for Google Calendar**
+- Fastest to implement
+- Fewer moving parts
+- Validate user demand
+- Easier to debug
+
+#### **Phase 2: Expansion (Week 9-12)**
+**Add n8n for Additional Integrations**
+```typescript
+// Feature flag for integration method
+interface UserPreferences {
+  integrations: {
+    method: 'native' | 'n8n';
+    enabled: {
+      googleCalendar: boolean;
+      appleCalendar?: boolean;   // Only via n8n
+      outlook?: boolean;          // Only via n8n
+      notion?: boolean;           // Only via n8n
+      todoist?: boolean;          // Only via n8n
+      slack?: boolean;            // Only via n8n
+    };
+  };
+}
+```
+
+**Gradual Migration:**
+1. Deploy n8n for beta users
+2. Mirror Google Calendar integration through n8n
+3. Test in parallel with native integration
+4. Add new integrations (Notion, Todoist, etc.)
+5. Migrate stable users to n8n
+6. Keep native as fallback
+
+#### **Phase 3: Enterprise (Month 4+)**
+**Hybrid Architecture**
+```
+Critical Path (low latency):
+  App → Native → Google Calendar
+
+Power Users (many integrations):
+  App → n8n → [10+ services]
+
+Automation (scheduled tasks):
+  n8n Cron → Process → Multiple services
+```
+
+### Cost Comparison
+
+| Approach | Infrastructure | Development | Monthly (100 users) |
+|----------|---------------|-------------|---------------------|
+| **Native Only** | Firebase only | 40 hours | $0 (free tier) |
+| **n8n Self-Hosted** | Firebase + Docker VPS | 20 hours (faster) | $10-20 (VPS) |
+| **n8n Cloud** | Firebase + n8n SaaS | 10 hours (fastest) | $20-50 (n8n plan) |
+
+### Monitoring & Observability with n8n
+
+```typescript
+// Track n8n workflow success rate
+interface N8nMetrics {
+  workflowExecutions: number;
+  successRate: number;
+  avgExecutionTime: number;
+  failedWorkflows: Array<{
+    workflowId: string;
+    error: string;
+    timestamp: Date;
+  }>;
+}
+
+// n8n provides webhook for execution status
+export const handleN8nWebhook = functions.https.onRequest(
+  async (req, res) => {
+    const { workflowId, success, executionTime, error } = req.body;
+    
+    await firestore.collection('n8nMetrics').add({
+      workflowId,
+      success,
+      executionTime,
+      error: error || null,
+      timestamp: FieldValue.serverTimestamp()
+    });
+    
+    if (!success) {
+      // Alert on failure
+      await sendAdminAlert(`n8n workflow failed: ${workflowId}`);
+    }
+    
+    res.sendStatus(200);
+  }
+);
+```
+
+### Final Recommendation
+
+**Start Native, Evolve to Hybrid**
+
+1. **MVP (Now - Week 8)**: Native Google Calendar integration
+   - Validate feature utility
+   - Build user base
+   - Keep architecture simple
+
+2. **Enhancement (Week 9-16)**: Add n8n in parallel
+   - Deploy n8n for power users
+   - Add Notion, Todoist, Slack integrations
+   - Gather feedback on multi-service value
+
+3. **Scale (Month 5+)**: Hybrid approach
+   - Keep native for Google Calendar (proven, fast)
+   - Use n8n for "long tail" integrations
+   - Let users choose their integration suite
+
+**Key Insight**: n8n is **phenomenal for breadth** (adding many integrations quickly), but native is **better for depth** (single integration with high reliability). For busy parents, start with depth (Google Calendar done well), then add breadth as they demand more integrations.
+
+---
+
+## Architecture Preparation for n8n Integration
+
+### Design Principles for Easy n8n Transition
+
+To ensure a smooth transition from native to n8n (or hybrid), we need to **architect for flexibility from day one**.
+
+### 1. Event-Driven Architecture Pattern
+
+#### Current Risk: Tight Coupling
+```typescript
+// ❌ BAD: Direct API calls embedded in feature logic
+export const extractCalendarEvents = functions.firestore
+  .document('conversations/{conversationId}/messages/{messageId}')
+  .onCreate(async (snap, context) => {
+    const event = await extractWithAI(snap.data());
+    
+    // Directly calling Google Calendar API - TIGHTLY COUPLED
+    const googleCalendar = google.calendar({ version: 'v3', auth });
+    await googleCalendar.events.insert({ ... });
+  });
+```
+
+**Problem**: Can't swap Google Calendar integration without rewriting the entire function.
+
+#### Solution: Event Bus Pattern
+```typescript
+// ✅ GOOD: Emit events, let handlers decide what to do
+export const extractCalendarEvents = functions.firestore
+  .document('conversations/{conversationId}/messages/{messageId}')
+  .onCreate(async (snap, context) => {
+    const event = await extractWithAI(snap.data());
+    
+    // Save to Firestore first (single source of truth)
+    await firestore.collection('extractedEvents').add(event);
+    
+    // Emit domain event - don't care who handles it
+    await emitEvent('calendar.event.extracted', {
+      eventId: event.id,
+      conversationId: context.params.conversationId,
+      event: event
+    });
+  });
+
+// Separate handler for integrations - EASILY SWAPPABLE
+export const handleEventExtracted = functions.firestore
+  .document('extractedEvents/{eventId}')
+  .onCreate(async (snap, context) => {
+    const event = snap.data();
+    
+    // Route based on configuration
+    await routeToIntegration('calendar.event.extracted', event);
+  });
+```
+
+### 2. Integration Abstraction Layer
+
+#### Create Integration Router
+```typescript
+// functions/src/integrations/router.ts
+
+interface IntegrationConfig {
+  provider: 'native' | 'n8n';
+  enabled: boolean;
+  fallbackToNative: boolean;
+}
+
+interface IntegrationEvent {
+  type: string;
+  data: any;
+  userId: string;
+  conversationId: string;
+  metadata?: Record<string, any>;
+}
+
+export class IntegrationRouter {
+  /**
+   * Routes integration events to the appropriate handler
+   * Allows switching between native and n8n without code changes
+   */
+  async route(event: IntegrationEvent): Promise<void> {
+    const config = await this.getIntegrationConfig(event.userId);
+    
+    try {
+      if (config.provider === 'n8n' && config.enabled) {
+        await this.routeToN8n(event);
+      } else {
+        await this.routeToNative(event);
+      }
+    } catch (error) {
+      console.error(`Integration routing failed:`, error);
+      
+      // Fallback to native if n8n fails
+      if (config.provider === 'n8n' && config.fallbackToNative) {
+        console.log('Falling back to native integration');
+        await this.routeToNative(event);
+      }
+    }
+  }
+  
+  private async routeToN8n(event: IntegrationEvent): Promise<void> {
+    // Send to n8n webhook
+    const webhookUrl = this.getN8nWebhookUrl(event.type);
+    
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.N8N_API_KEY}`
+      },
+      body: JSON.stringify(event)
+    });
+  }
+  
+  private async routeToNative(event: IntegrationEvent): Promise<void> {
+    // Route to native integration handlers
+    const handler = this.getNativeHandler(event.type);
+    await handler(event);
+  }
+  
+  private async getIntegrationConfig(userId: string): Promise<IntegrationConfig> {
+    const userDoc = await firestore.collection('users').doc(userId).get();
+    
+    return userDoc.data()?.integrations || {
+      provider: 'native',
+      enabled: true,
+      fallbackToNative: true
+    };
+  }
+  
+  private getN8nWebhookUrl(eventType: string): string {
+    // Map event types to n8n webhook URLs
+    const webhookMap = {
+      'calendar.event.extracted': '/webhook/event-extracted',
+      'decision.made': '/webhook/decision-made',
+      'deadline.created': '/webhook/deadline-created',
+      'rsvp.received': '/webhook/rsvp-received'
+    };
+    
+    const path = webhookMap[eventType];
+    return `${process.env.N8N_HOST}${path}`;
+  }
+  
+  private getNativeHandler(eventType: string): Function {
+    // Map event types to native handlers
+    const handlerMap = {
+      'calendar.event.extracted': exportToGoogleCalendar,
+      'decision.made': notifyDecisionMade,
+      'deadline.created': scheduleDeadlineReminders,
+      'rsvp.received': updateRSVPTracker
+    };
+    
+    return handlerMap[eventType];
+  }
+}
+
+// Global instance
+export const integrationRouter = new IntegrationRouter();
+```
+
+#### Usage in Cloud Functions
+```typescript
+// functions/src/calendar/onEventExtracted.ts
+
+export const onEventExtracted = functions.firestore
+  .document('extractedEvents/{eventId}')
+  .onCreate(async (snap, context) => {
+    const event = snap.data() as CalendarEvent;
+    
+    // Use router instead of direct integration
+    await integrationRouter.route({
+      type: 'calendar.event.extracted',
+      data: event,
+      userId: event.hostUserId,
+      conversationId: event.conversationId
+    });
+  });
+```
+
+**This single change enables:**
+- ✅ Zero-code switch from native → n8n
+- ✅ Per-user integration preferences
+- ✅ A/B testing native vs n8n
+- ✅ Automatic fallback if n8n fails
+- ✅ Gradual migration
+
+### 3. Standardized Event Schema
+
+#### Define Domain Events
+```typescript
+// functions/src/integrations/events.ts
+
+export namespace DomainEvents {
+  export interface CalendarEventExtracted {
+    type: 'calendar.event.extracted';
+    version: 'v1';
+    timestamp: string;
+    data: {
+      eventId: string;
+      conversationId: string;
+      messageId: string;
+      event: {
+        title: string;
+        date: string;
+        time?: string;
+        location?: string;
+        participants: string[];
+        status: 'proposed' | 'confirmed';
+      };
+    };
+    metadata: {
+      userId: string;
+      extractionMethod: 'ai' | 'manual';
+      confidence?: number;
+    };
+  }
+  
+  export interface DecisionMade {
+    type: 'decision.made';
+    version: 'v1';
+    timestamp: string;
+    data: {
+      decisionId: string;
+      conversationId: string;
+      summary: string;
+      outcome: string;
+      actionItems: Array<{
+        task: string;
+        assignedTo?: string;
+      }>;
+    };
+    metadata: {
+      participants: string[];
+      confidence: number;
+    };
+  }
+  
+  export interface DeadlineCreated {
+    type: 'deadline.created';
+    version: 'v1';
+    timestamp: string;
+    data: {
+      deadlineId: string;
+      conversationId: string;
+      task: string;
+      deadline: string;
+      assignedTo?: string;
+      priority: 'urgent' | 'high' | 'normal';
+    };
+    metadata: {
+      userId: string;
+      extractionMethod: 'ai' | 'manual';
+    };
+  }
+  
+  export interface RSVPReceived {
+    type: 'rsvp.received';
+    version: 'v1';
+    timestamp: string;
+    data: {
+      trackerId: string;
+      eventId: string;
+      userId: string;
+      response: 'yes' | 'no' | 'maybe';
+      messageId: string;
+    };
+    metadata: {
+      conversationId: string;
+      totalInvitees: number;
+      totalResponded: number;
+    };
+  }
+}
+
+// Type union for all events
+export type DomainEvent = 
+  | DomainEvents.CalendarEventExtracted
+  | DomainEvents.DecisionMade
+  | DomainEvents.DeadlineCreated
+  | DomainEvents.RSVPReceived;
+```
+
+**Why this matters:**
+- ✅ n8n receives consistent, well-structured data
+- ✅ Versioning allows schema evolution
+- ✅ Type safety for native handlers
+- ✅ Self-documenting API for n8n workflows
+- ✅ Easy to mock for testing
+
+### 4. Webhook Callback Architecture
+
+#### n8n → App Communication
+```typescript
+// functions/src/webhooks/n8n-callbacks.ts
+
+/**
+ * n8n workflows POST back to this endpoint with results
+ * This allows bidirectional communication
+ */
+export const handleN8nCallback = functions.https.onRequest(
+  async (req, res) => {
+    // Verify request is from n8n
+    const signature = req.headers['x-n8n-signature'];
+    if (!verifyN8nSignature(signature, req.body)) {
+      res.status(401).send('Invalid signature');
+      return;
+    }
+    
+    const { 
+      eventType, 
+      eventId, 
+      status, 
+      result, 
+      error 
+    } = req.body;
+    
+    try {
+      // Update Firestore with integration result
+      await updateIntegrationStatus(eventType, eventId, {
+        status,
+        result,
+        error,
+        processedAt: FieldValue.serverTimestamp()
+      });
+      
+      // Handle specific event types
+      switch (eventType) {
+        case 'calendar.event.extracted':
+          await handleCalendarSyncResult(eventId, result);
+          break;
+        
+        case 'decision.made':
+          await handleDecisionProcessed(eventId, result);
+          break;
+        
+        case 'deadline.created':
+          await handleDeadlineScheduled(eventId, result);
+          break;
+      }
+      
+      res.sendStatus(200);
+      
+    } catch (error) {
+      console.error('n8n callback error:', error);
+      res.status(500).send('Processing failed');
+    }
+  }
+);
+
+async function handleCalendarSyncResult(
+  eventId: string, 
+  result: any
+): Promise<void> {
+  // Example: n8n synced to Google Calendar, update our record
+  if (result.googleCalendarId) {
+    await firestore.collection('extractedEvents').doc(eventId).update({
+      googleCalendarId: result.googleCalendarId,
+      googleCalendarSyncedAt: FieldValue.serverTimestamp(),
+      syncStatus: 'synced',
+      syncedVia: 'n8n'
+    });
+  }
+  
+  // If n8n also synced to Notion
+  if (result.notionPageId) {
+    await firestore.collection('extractedEvents').doc(eventId).update({
+      notionPageId: result.notionPageId,
+      notionSyncedAt: FieldValue.serverTimestamp()
+    });
+  }
+}
+```
+
+#### n8n Workflow Configuration
+```json
+{
+  "nodes": [
+    {
+      "name": "Receive Event",
+      "type": "n8n-nodes-base.webhook"
+    },
+    {
+      "name": "Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar"
+    },
+    {
+      "name": "Notion",
+      "type": "n8n-nodes-base.notion"
+    },
+    {
+      "name": "Report Back to App",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://your-app.com/webhooks/n8n-callback",
+        "method": "POST",
+        "body": {
+          "eventType": "={{$json['type']}}",
+          "eventId": "={{$json['data']['eventId']}}",
+          "status": "success",
+          "result": {
+            "googleCalendarId": "={{$node['Google Calendar'].json['id']}}",
+            "notionPageId": "={{$node['Notion'].json['id']}}"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+### 5. Firestore Schema Extensions
+
+#### Integration Tracking Collection
+```typescript
+// /integrationEvents/{eventId}
+interface IntegrationEvent {
+  eventId: string;
+  eventType: string;
+  userId: string;
+  conversationId: string;
+  
+  // Source data
+  sourceData: any;
+  
+  // Routing
+  routedTo: 'native' | 'n8n';
+  routedAt: Timestamp;
+  
+  // Status tracking
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  
+  // Results
+  nativeResult?: {
+    success: boolean;
+    data?: any;
+    error?: string;
+    completedAt: Timestamp;
+  };
+  
+  n8nResult?: {
+    workflowId: string;
+    executionId: string;
+    success: boolean;
+    data?: any;
+    error?: string;
+    completedAt: Timestamp;
+  };
+  
+  // Fallback tracking
+  fallbackUsed: boolean;
+  fallbackReason?: string;
+  
+  // Performance
+  processingTimeMs?: number;
+  
+  // Timestamps
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+#### User Integration Preferences
+```typescript
+// Extension to /users/{userId}
+interface UserIntegrationPreferences {
+  integrations: {
+    // Global provider preference
+    defaultProvider: 'native' | 'n8n';
+    
+    // Per-feature overrides
+    calendar: {
+      provider: 'native' | 'n8n';
+      enabled: boolean;
+      
+      // n8n-specific config
+      n8n?: {
+        workflows: {
+          eventExtracted: string;  // n8n workflow ID
+          eventUpdated: string;
+          eventDeleted: string;
+        };
+      };
+      
+      // Native-specific config
+      native?: {
+        services: Array<'google' | 'apple' | 'outlook'>;
+        primaryService: 'google';
+      };
+    };
+    
+    decisions: {
+      provider: 'native' | 'n8n';
+      enabled: boolean;
+    };
+    
+    deadlines: {
+      provider: 'native' | 'n8n';
+      enabled: boolean;
+    };
+    
+    rsvp: {
+      provider: 'native' | 'n8n';
+      enabled: boolean;
+    };
+    
+    // Fallback configuration
+    fallback: {
+      enabled: boolean;
+      fallbackToNative: boolean;  // If n8n fails, use native
+      retryCount: number;
+      retryDelayMs: number;
+    };
+    
+    // Feature flags for gradual rollout
+    betaFeatures: {
+      n8nIntegrations: boolean;
+      multiServiceSync: boolean;
+    };
+  };
+}
+```
+
+### 6. Migration Strategy with Feature Flags
+
+#### Firestore-Based Feature Flags
+```typescript
+// /featureFlags/integrations
+interface IntegrationFeatureFlags {
+  n8n: {
+    enabled: boolean;
+    rolloutPercentage: number;  // 0-100
+    allowedUserIds: string[];   // Beta testers
+    disallowedUserIds: string[]; // Blocklist
+    minAppVersion: string;      // Require app update
+  };
+  
+  native: {
+    enabled: boolean;
+    gracefulShutdown: boolean;  // Allow existing native to finish
+  };
+  
+  // Per-feature rollout
+  features: {
+    calendar: {
+      n8nEnabled: boolean;
+      rolloutPercentage: number;
+    };
+    decisions: {
+      n8nEnabled: boolean;
+      rolloutPercentage: number;
+    };
+    // ... etc
+  };
+}
+
+export async function shouldUseN8n(
+  userId: string,
+  feature: string
+): Promise<boolean> {
+  const flags = await getFeatureFlags();
+  
+  // Check if n8n globally enabled
+  if (!flags.n8n.enabled) return false;
+  
+  // Check if user is in beta
+  if (flags.n8n.allowedUserIds.includes(userId)) return true;
+  
+  // Check if user is blocked
+  if (flags.n8n.disallowedUserIds.includes(userId)) return false;
+  
+  // Check feature-specific rollout
+  const featureFlags = flags.features[feature];
+  if (!featureFlags?.n8nEnabled) return false;
+  
+  // Rollout percentage (deterministic based on userId)
+  const userHash = hashUserId(userId);
+  const userPercentile = userHash % 100;
+  
+  return userPercentile < featureFlags.rolloutPercentage;
+}
+```
+
+#### Gradual Migration Example
+```typescript
+// Week 1: 5% rollout
+await updateFeatureFlags({
+  'features.calendar.rolloutPercentage': 5
+});
+
+// Week 2: 10% if no issues
+await updateFeatureFlags({
+  'features.calendar.rolloutPercentage': 10
+});
+
+// Week 4: 50% rollout
+await updateFeatureFlags({
+  'features.calendar.rolloutPercentage': 50
+});
+
+// Week 8: 100% rollout (fully migrated)
+await updateFeatureFlags({
+  'features.calendar.rolloutPercentage': 100
+});
+```
+
+### 7. Testing Strategy for Dual Integration
+
+#### Integration Contract Tests
+```typescript
+// functions/src/integrations/__tests__/contract.test.ts
+
+describe('Integration Contract Tests', () => {
+  const testEvent: DomainEvents.CalendarEventExtracted = {
+    type: 'calendar.event.extracted',
+    version: 'v1',
+    timestamp: new Date().toISOString(),
+    data: {
+      eventId: 'test-123',
+      conversationId: 'conv-456',
+      messageId: 'msg-789',
+      event: {
+        title: 'Soccer Practice',
+        date: '2025-10-25',
+        time: '16:00',
+        location: 'Park Field',
+        participants: ['user1', 'user2'],
+        status: 'confirmed'
+      }
+    },
+    metadata: {
+      userId: 'user1',
+      extractionMethod: 'ai',
+      confidence: 0.95
+    }
+  };
+  
+  test('Native integration handles standard event', async () => {
+    const result = await integrationRouter.routeToNative(testEvent);
+    expect(result.success).toBe(true);
+    expect(result.googleCalendarId).toBeDefined();
+  });
+  
+  test('n8n integration handles standard event', async () => {
+    const result = await integrationRouter.routeToN8n(testEvent);
+    expect(result.success).toBe(true);
+    expect(result.webhookDelivered).toBe(true);
+  });
+  
+  test('Both integrations produce equivalent results', async () => {
+    const nativeResult = await integrationRouter.routeToNative(testEvent);
+    const n8nResult = await integrationRouter.routeToN8n(testEvent);
+    
+    // Should both create calendar events
+    expect(nativeResult.success).toBe(n8nResult.success);
+  });
+  
+  test('Fallback works when n8n fails', async () => {
+    // Simulate n8n failure
+    mockN8nToFail();
+    
+    const result = await integrationRouter.route({
+      ...testEvent,
+      userId: 'user-with-n8n-enabled'
+    });
+    
+    // Should fall back to native
+    expect(result.usedFallback).toBe(true);
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+### 8. Monitoring & Observability
+
+#### Integration Metrics Dashboard
+```typescript
+// functions/src/monitoring/integration-metrics.ts
+
+interface IntegrationMetrics {
+  // Routing
+  routedToNative: number;
+  routedToN8n: number;
+  
+  // Success rates
+  nativeSuccessRate: number;
+  n8nSuccessRate: number;
+  
+  // Performance
+  nativeAvgLatencyMs: number;
+  n8nAvgLatencyMs: number;
+  
+  // Failures
+  nativeFailures: number;
+  n8nFailures: number;
+  fallbacksUsed: number;
+  
+  // Cost tracking
+  nativeCost: number;
+  n8nCost: number;
+}
+
+export const aggregateMetrics = functions.pubsub
+  .schedule('every 1 hours')
+  .onRun(async () => {
+    const hourAgo = Timestamp.fromDate(
+      new Date(Date.now() - 3600000)
+    );
+    
+    const events = await firestore
+      .collection('integrationEvents')
+      .where('createdAt', '>', hourAgo)
+      .get();
+    
+    const metrics = calculateMetrics(events);
+    
+    await firestore
+      .collection('integrationMetrics')
+      .add({
+        ...metrics,
+        timestamp: FieldValue.serverTimestamp(),
+        period: 'hourly'
+      });
+    
+    // Alert if n8n success rate drops below 95%
+    if (metrics.n8nSuccessRate < 0.95) {
+      await sendAdminAlert(
+        'n8n integration degraded',
+        `Success rate: ${metrics.n8nSuccessRate * 100}%`
+      );
+    }
+  });
+```
+
+### 9. Documentation for n8n Workflows
+
+#### Workflow Documentation Template
+```typescript
+// /n8n-workflows/README.md
+
+/**
+ * n8n Workflow: Calendar Event Sync
+ * 
+ * Webhook: /webhook/event-extracted
+ * Trigger: When calendar event is extracted from message
+ * 
+ * Input Schema:
+ * {
+ *   "type": "calendar.event.extracted",
+ *   "data": {
+ *     "eventId": "string",
+ *     "event": {
+ *       "title": "string",
+ *       "date": "YYYY-MM-DD",
+ *       "time": "HH:MM" (optional)
+ *     }
+ *   }
+ * }
+ * 
+ * Actions:
+ * 1. Create event in Google Calendar
+ * 2. Create page in Notion (family dashboard)
+ * 3. Send Slack notification to family channel
+ * 4. POST result back to app
+ * 
+ * Callback URL: /webhooks/n8n-callback
+ * 
+ * Expected Callback:
+ * {
+ *   "eventType": "calendar.event.extracted",
+ *   "eventId": "string",
+ *   "status": "success",
+ *   "result": {
+ *     "googleCalendarId": "string",
+ *     "notionPageId": "string"
+ *   }
+ * }
+ */
+```
+
+### 10. Refactoring Checklist
+
+To prepare your existing code for n8n integration:
+
+#### ✅ Phase 1: Decouple Integration Logic (Week 1)
+- [ ] Extract all Google Calendar API calls into separate module
+- [ ] Create `IntegrationRouter` class
+- [ ] Define `DomainEvent` types
+- [ ] Implement event emitter pattern
+- [ ] Add integration tracking to Firestore
+
+#### ✅ Phase 2: Add Abstraction Layer (Week 2)
+- [ ] Implement `routeToNative()` and `routeToN8n()` methods
+- [ ] Add webhook callback endpoint
+- [ ] Create integration config schema
+- [ ] Add feature flags for n8n
+- [ ] Write contract tests
+
+#### ✅ Phase 3: Deploy n8n Infrastructure (Week 3)
+- [ ] Set up n8n Docker container
+- [ ] Configure OAuth for integrations
+- [ ] Create initial workflows
+- [ ] Test webhook delivery
+- [ ] Set up monitoring
+
+#### ✅ Phase 4: Gradual Migration (Week 4-8)
+- [ ] Enable n8n for beta users (5%)
+- [ ] Monitor metrics and errors
+- [ ] Increase rollout incrementally
+- [ ] Disable native for migrated users
+- [ ] Complete migration or run hybrid
+
+---
+
+## Key Architectural Changes Summary
+
+### Before (Tightly Coupled)
+```
+Message → AI Extraction → Direct Google Calendar API Call
+```
+**Problem**: Can't swap integrations without rewriting code
+
+### After (Event-Driven + Abstraction)
+```
+Message → AI Extraction → Domain Event → Integration Router
+                                            ↓
+                                    Native Handler  OR  n8n Webhook
+                                            ↓                ↓
+                                    Google Calendar    [10+ Services]
+```
+**Benefits**:
+- ✅ Zero-code switch between native/n8n
+- ✅ Per-user integration preferences
+- ✅ Gradual migration with feature flags
+- ✅ Automatic fallback
+- ✅ Easy A/B testing
+
+### Code Changes Required
+
+**Minimal changes to existing code:**
+```typescript
+// BEFORE:
+await exportToGoogleCalendar(event);
+
+// AFTER:
+await integrationRouter.route({
+  type: 'calendar.event.extracted',
+  data: event,
+  userId: event.hostUserId
+});
+```
+
+**That's it!** The router handles everything else.
+
+---
+
+## Migration Timeline
+
+| Week | Task | Effort |
+|------|------|--------|
+| 1 | Implement IntegrationRouter | 8 hours |
+| 2 | Add webhook callbacks | 4 hours |
+| 3 | Deploy n8n + create workflows | 8 hours |
+| 4 | Beta testing (5% users) | 4 hours |
+| 5-8 | Gradual rollout | 2 hours/week |
+
+**Total: ~30 hours** to be fully n8n-ready
+
+---
+
+## Final Recommendation
+
+### Implement These Changes NOW (Even if not using n8n yet)
+
+1. **IntegrationRouter** - Adds flexibility at minimal cost
+2. **Domain Events** - Makes code cleaner regardless
+3. **Feature Flags** - Enables controlled rollouts
+4. **Integration Tracking** - Better observability
+
+**These changes make your code better even if you never use n8n.**
+
+### When to Add n8n
+
+**After validating Google Calendar integration:**
+- Users love it ✅
+- Requests for more integrations ✅
+- Team bandwidth for n8n infrastructure ✅
+
+Then you're **one config change away** from n8n integration! 🚀
+
+---
+
 ## Integration Points
 
 ### Device Calendar Integration
