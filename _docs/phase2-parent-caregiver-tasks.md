@@ -44,11 +44,16 @@ This document provides implementation tasks for specializing the messaging app f
 ### AI Infrastructure Setup
 - [ ] Ensure Anthropic API key configured in Firebase Functions
 - [ ] Verify Cloud Function: `processAIAction` exists (from Phase 7)
+- [ ] **Set up Pinecone for RAG pipeline** (conversation history retrieval)
+  - [ ] Create Pinecone account and get API key
+  - [ ] Create index: `conversation-history` (dimension: 1536 for OpenAI embeddings)
+  - [ ] Install dependencies: `npm install @pinecone-database/pinecone openai`
 - [ ] Verify Firestore collections exist:
   - [ ] `/actionQueue`
   - [ ] `/conversationContext`
   - [ ] `/extractedEvents` (new for calendar)
   - [ ] `/decisions` (new for decision tracking)
+  - [ ] `/messageEmbeddings` (new for RAG)
 
 ### Data Model Extensions
 - [ ] Add new Firestore collections (see architecture doc)
@@ -94,6 +99,741 @@ This document provides implementation tasks for specializing the messaging app f
   - [ ] `RSVPWidget.tsx`
   - [ ] `DeadlineReminder.tsx`
   - [ ] `ConflictAlert.tsx`
+
+---
+
+## RAG Pipeline: Conversation History Retrieval
+
+**Purpose**: Enable AI features to search through past conversations to provide context-aware assistance
+
+### Why RAG is Essential for Busy Parents
+
+The RAG pipeline allows the AI to:
+1. **Answer questions about past plans**: "When did we decide on the dentist appointment?"
+2. **Provide context for decisions**: "Why did we choose Saturday for soccer?"
+3. **Recall past events**: "What time was last month's parent-teacher conference?"
+4. **Smart conflict detection**: Check if similar events happened before
+5. **Proactive suggestions**: "You usually schedule haircuts on Saturdays around 10am"
+
+### Architecture Overview
+
+```
+Message Created
+       │
+       ├──[1]──► Standard message flow (existing)
+       │
+       └──[2]──► Generate embedding (background)
+                  │
+                  ├─► OpenAI text-embedding-3-small
+                  │    (1536 dimensions, $0.0001/1K tokens)
+                  │
+                  ├─► Store in Pinecone
+                  │    • messageId
+                  │    • conversationId
+                  │    • timestamp
+                  │    • messageType (event/decision/question)
+                  │
+                  └─► Index for fast retrieval
+
+AI Feature Needs Context (e.g., Decision Summarization)
+       │
+       └──► Query Pinecone
+              │
+              ├─► Search: "decisions about weekend plans"
+              │
+              ├─► Returns: Top 10 similar messages
+              │
+              └─► Fetch full messages from Firestore
+                   │
+                   └─► Include in AI prompt as context
+```
+
+### Phase 0: RAG Pipeline Setup
+
+#### Embedding Generation
+- [ ] Create Cloud Function: `functions/src/generateEmbeddings.ts`
+  ```typescript
+  export const generateEmbeddings = functions.firestore
+    .document('conversations/{conversationId}/messages/{messageId}')
+    .onCreate(async (snap, context) => {
+      const message = snap.data();
+      
+      // Skip if not worth embedding (too short, just emojis, etc.)
+      if (!shouldEmbed(message)) return;
+      
+      try {
+        // Generate embedding using OpenAI
+        const embedding = await generateEmbedding(message.content.text);
+        
+        // Store in Pinecone
+        await upsertToPinecone({
+          id: context.params.messageId,
+          values: embedding,
+          metadata: {
+            conversationId: context.params.conversationId,
+            senderId: message.senderId,
+            timestamp: message.timestamp.toMillis(),
+            messageType: classifyMessage(message.content.text),
+            hasEvent: message.content.metadata?.extractedEntities?.events?.length > 0,
+            hasDecision: message.content.metadata?.extractedEntities?.decisions?.length > 0
+          }
+        });
+        
+        // Track in Firestore for debugging
+        await firestore.collection('messageEmbeddings').doc(context.params.messageId).set({
+          messageId: context.params.messageId,
+          conversationId: context.params.conversationId,
+          embeddedAt: FieldValue.serverTimestamp(),
+          model: 'text-embedding-3-small'
+        });
+        
+      } catch (error) {
+        console.error('Embedding generation failed:', error);
+      }
+    });
+  
+  function shouldEmbed(message: Message): boolean {
+    const text = message.content.text;
+    
+    // Skip if too short or just emojis
+    if (text.length < 10) return false;
+    if (/^[\u{1F300}-\u{1F9FF}\s]+$/u.test(text)) return false;
+    
+    return true;
+  }
+  
+  function classifyMessage(text: string): string {
+    // Simple keyword-based classification
+    if (hasTemporalKeywords(text)) return 'event';
+    if (hasDecisionKeywords(text)) return 'decision';
+    if (text.includes('?')) return 'question';
+    return 'statement';
+  }
+  ```
+
+#### OpenAI Embedding Service
+- [ ] Create `functions/src/services/embeddings.ts`:
+  ```typescript
+  import OpenAI from 'openai';
+  
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+  
+  export async function generateEmbedding(text: string): Promise<number[]> {
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text,
+      encoding_format: 'float'
+    });
+    
+    return response.data[0].embedding;
+  }
+  
+  export async function generateQueryEmbedding(query: string): Promise<number[]> {
+    return generateEmbedding(query);
+  }
+  ```
+
+#### Pinecone Integration
+- [ ] Create `functions/src/services/pinecone.ts`:
+  ```typescript
+  import { Pinecone } from '@pinecone-database/pinecone';
+  
+  const pinecone = new Pinecone({
+    apiKey: process.env.PINECONE_API_KEY
+  });
+  
+  const index = pinecone.index('conversation-history');
+  
+  export async function upsertToPinecone(vector: {
+    id: string;
+    values: number[];
+    metadata: Record<string, any>;
+  }) {
+    await index.upsert([vector]);
+  }
+  
+  export async function searchConversationHistory(
+    query: string,
+    conversationId: string,
+    limit: number = 10
+  ): Promise<SearchResult[]> {
+    // Generate embedding for query
+    const queryEmbedding = await generateQueryEmbedding(query);
+    
+    // Search Pinecone
+    const results = await index.query({
+      vector: queryEmbedding,
+      topK: limit,
+      filter: {
+        conversationId: { $eq: conversationId }
+      },
+      includeMetadata: true
+    });
+    
+    return results.matches.map(match => ({
+      messageId: match.id,
+      score: match.score,
+      metadata: match.metadata
+    }));
+  }
+  
+  export async function searchAcrossConversations(
+    query: string,
+    userId: string,
+    limit: number = 10
+  ): Promise<SearchResult[]> {
+    const queryEmbedding = await generateQueryEmbedding(query);
+    
+    // Get user's conversations first
+    const userConversations = await getUserConversations(userId);
+    const conversationIds = userConversations.map(c => c.id);
+    
+    // Search across all user's conversations
+    const results = await index.query({
+      vector: queryEmbedding,
+      topK: limit,
+      filter: {
+        conversationId: { $in: conversationIds }
+      },
+      includeMetadata: true
+    });
+    
+    return results.matches.map(match => ({
+      messageId: match.id,
+      score: match.score,
+      metadata: match.metadata
+    }));
+  }
+  ```
+
+#### RAG-Enhanced AI Calls
+- [ ] Create helper function: `functions/src/services/rag-helper.ts`:
+  ```typescript
+  export async function enhancePromptWithContext(
+    prompt: string,
+    conversationId: string,
+    query: string
+  ): Promise<string> {
+    // Search relevant history
+    const relevantMessages = await searchConversationHistory(
+      query,
+      conversationId,
+      10
+    );
+    
+    if (relevantMessages.length === 0) {
+      return prompt;  // No context found
+    }
+    
+    // Fetch full message content
+    const messages = await Promise.all(
+      relevantMessages.map(r => fetchMessage(r.messageId))
+    );
+    
+    // Build context section
+    const contextSection = `
+CONVERSATION HISTORY (Most Relevant):
+${messages.map((m, i) => `
+[${i + 1}] ${formatDate(m.timestamp)} - ${m.senderName}:
+${m.content.text}
+`).join('\n')}
+
+---
+`;
+    
+    // Insert context before main prompt
+    return contextSection + prompt;
+  }
+  ```
+
+### RAG Integration in Features
+
+#### Example: Decision Summarization with RAG
+```typescript
+// Before calling AI for decision summary
+const enhancedPrompt = await enhancePromptWithContext(
+  DECISION_PROMPT,
+  conversationId,
+  'decisions about plans and agreements'  // Query for relevant context
+);
+
+const decision = await callClaudeAPI(enhancedPrompt, recentMessages);
+```
+
+#### Example: Proactive Conflict Detection with RAG
+```typescript
+// When detecting conflicts, check if similar event happened before
+const similarPastEvents = await searchConversationHistory(
+  `${newEvent.title} ${newEvent.location}`,
+  conversationId,
+  5
+);
+
+// Include in prompt to AI
+const contextualPrompt = `
+This event seems similar to:
+${similarPastEvents.map(e => formatEvent(e)).join('\n')}
+
+Consider if this is a recurring commitment when suggesting solutions.
+`;
+```
+
+### Testing RAG Pipeline
+- [ ] **Embedding generation test**:
+  - [ ] Send test message → Verify embedding created in Pinecone
+  - [ ] Check metadata is correct
+  - [ ] Verify Firestore tracking document created
+
+- [ ] **Search accuracy test**:
+  - [ ] Create conversation with known events
+  - [ ] Query: "dentist appointment" → Should find relevant messages
+  - [ ] Query: "Saturday plans" → Should find weekend-related discussions
+
+- [ ] **Context enhancement test**:
+  - [ ] Use decision summarization with RAG
+  - [ ] Verify AI receives relevant historical context
+  - [ ] Compare decision quality with/without RAG
+
+### Cost Estimates for RAG
+
+| Component | Usage | Cost |
+|-----------|-------|------|
+| **OpenAI Embeddings** | 100 msgs/user/month | $0.015/user/month |
+| **Pinecone Storage** | ~1000 vectors/user | $0.096/user/month |
+| **Pinecone Queries** | ~50 queries/user/month | $0.002/user/month |
+| **Total RAG Cost** | - | **$0.11/user/month** |
+
+**Total AI Cost (including RAG): $0.30/user/month** ($0.19 + $0.11)
+
+### Optimization Strategies
+1. **Selective Embedding**: Only embed substantial messages (>10 chars)
+2. **Batch Embedding**: Process in batches of 100 to reduce API calls
+3. **Smart Queries**: Only query RAG when feature truly needs context
+4. **Metadata Filtering**: Use Pinecone filters to narrow search space
+5. **TTL on Vectors**: Auto-delete embeddings older than 1 year
+
+**Checkpoint**: ✅ RAG pipeline operational, all features can access conversation history
+
+---
+
+## Google Calendar Integration
+
+**Purpose**: Bidirectional sync between extracted events and user's Google Calendar
+
+### Why Google Calendar Integration Matters
+
+For busy parents, the app should be **one source of truth** that syncs with their existing workflow:
+- ✅ **No duplicate entry**: Events extracted from messages auto-add to Google Calendar
+- ✅ **Stay in sync**: Changes in Google Calendar reflect in app
+- ✅ **Family sharing**: Share calendar with spouse/family members
+- ✅ **Reminders work**: Google Calendar's native reminder system kicks in
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WhatsApp Clone App                       │
+│                                                             │
+│  Event Extracted from Message                              │
+│         │                                                   │
+│         ▼                                                   │
+│  /extractedEvents/{id}                                     │
+│         │                                                   │
+│         ├─► User Action: "Add to Google Calendar"          │
+│         │                                                   │
+│         └─► Cloud Function: exportToGoogleCalendar         │
+│                     │                                       │
+└─────────────────────┼───────────────────────────────────────┘
+                      │
+                      │ OAuth 2.0 + Google Calendar API
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│               Google Calendar API                           │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Primary Calendar (or Family Calendar)               │  │
+│  │                                                       │  │
+│  │  • Create event with metadata                        │  │
+│  │  • Store extendedProperties (messageId, eventId)     │  │
+│  │  • Set reminders                                     │  │
+│  │  • Share with family members                         │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Webhook (optional): Calendar changes notify app     │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+
+BIDIRECTIONAL SYNC (Optional Phase 2):
+┌─────────────────────────────────────────────────────────────┐
+│  Scheduled Function: syncGoogleCalendar (every 6 hours)    │
+│         │                                                   │
+│         ├─► Fetch events from Google Calendar              │
+│         ├─► Compare with /extractedEvents                  │
+│         ├─► Update changed events                          │
+│         └─► Create conversation messages for new events    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Phase Integration
+
+This fits into **Feature 1: Smart Calendar Extraction** as an enhancement
+
+### Implementation Tasks
+
+#### OAuth 2.0 Setup
+- [ ] **Google Cloud Console Setup**:
+  - [ ] Create OAuth 2.0 credentials for iOS app
+  - [ ] Add Google Calendar API scope: `https://www.googleapis.com/auth/calendar`
+  - [ ] Configure redirect URI for app
+
+- [ ] **Install Dependencies**:
+  ```bash
+  cd mobile
+  npm install @react-native-google-signin/google-signin
+  npm install react-native-google-calendar-events
+  
+  cd ../functions
+  npm install googleapis
+  ```
+
+- [ ] **Client-Side OAuth Flow** (`mobile/src/services/google-auth.ts`):
+  ```typescript
+  import { GoogleSignin } from '@react-native-google-signin/google-signin';
+  
+  GoogleSignin.configure({
+    webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+    scopes: ['https://www.googleapis.com/auth/calendar'],
+    offlineAccess: true,  // Get refresh token
+  });
+  
+  export async function signInWithGoogle(): Promise<string> {
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const tokens = await GoogleSignin.getTokens();
+      
+      // Store tokens securely
+      await storeGoogleTokens(tokens);
+      
+      return tokens.accessToken;
+    } catch (error) {
+      console.error('Google sign-in failed:', error);
+      throw error;
+    }
+  }
+  
+  export async function getGoogleAccessToken(): Promise<string | null> {
+    try {
+      const tokens = await GoogleSignin.getTokens();
+      return tokens.accessToken;
+    } catch (error) {
+      // Token expired, need to re-authenticate
+      return null;
+    }
+  }
+  ```
+
+#### Export to Google Calendar (One-Way Sync)
+- [ ] **Cloud Function**: `functions/src/exportToGoogleCalendar.ts`
+  ```typescript
+  import { google } from 'googleapis';
+  
+  export const exportToGoogleCalendar = functions.https.onCall(
+    async (data: {
+      eventId: string;
+      accessToken: string;
+    }, context) => {
+      // Verify user is authenticated
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          'unauthenticated',
+          'User must be authenticated'
+        );
+      }
+      
+      // Fetch event from Firestore
+      const eventDoc = await firestore
+        .collection('extractedEvents')
+        .doc(data.eventId)
+        .get();
+      
+      if (!eventDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Event not found');
+      }
+      
+      const event = eventDoc.data() as CalendarEvent;
+      
+      // Initialize Google Calendar API
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({
+        access_token: data.accessToken
+      });
+      
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+      
+      try {
+        // Create event in Google Calendar
+        const response = await calendar.events.insert({
+          calendarId: 'primary',
+          requestBody: {
+            summary: event.title,
+            description: `Extracted from conversation\n\nOriginal message: ${event.messageId}`,
+            location: event.location || undefined,
+            start: {
+              dateTime: event.time
+                ? parseDateTime(event.date, event.time).toISOString()
+                : undefined,
+              date: event.time ? undefined : formatDate(event.date),
+              timeZone: 'America/New_York'  // User's timezone
+            },
+            end: {
+              dateTime: event.endTime
+                ? parseDateTime(event.date, event.endTime).toISOString()
+                : event.time
+                  ? addHours(parseDateTime(event.date, event.time), 1).toISOString()
+                  : undefined,
+              date: event.time ? undefined : formatDate(addDays(event.date.toDate(), 1)),
+              timeZone: 'America/New_York'
+            },
+            reminders: {
+              useDefault: false,
+              overrides: [
+                { method: 'popup', minutes: 60 },
+                { method: 'popup', minutes: 15 }
+              ]
+            },
+            extendedProperties: {
+              private: {
+                appEventId: event.id,
+                appMessageId: event.messageId,
+                appConversationId: event.conversationId
+              }
+            }
+          }
+        });
+        
+        const googleEventId = response.data.id;
+        
+        // Update Firestore with Google Calendar ID
+        await eventDoc.ref.update({
+          googleCalendarId: googleEventId,
+          googleCalendarSyncedAt: FieldValue.serverTimestamp(),
+          syncStatus: 'synced'
+        });
+        
+        return {
+          success: true,
+          googleEventId,
+          googleEventLink: response.data.htmlLink
+        };
+        
+      } catch (error) {
+        console.error('Google Calendar export failed:', error);
+        
+        await eventDoc.ref.update({
+          syncStatus: 'failed',
+          syncError: error.message
+        });
+        
+        throw new functions.https.HttpsError(
+          'internal',
+          'Failed to export to Google Calendar'
+        );
+      }
+    }
+  );
+  ```
+
+- [ ] **Client-Side Integration** (`mobile/src/services/calendar-sync.ts`):
+  ```typescript
+  export async function exportEventToGoogleCalendar(
+    eventId: string
+  ): Promise<boolean> {
+    try {
+      // Get Google access token
+      const accessToken = await getGoogleAccessToken();
+      
+      if (!accessToken) {
+        // Need to re-authenticate
+        const newToken = await signInWithGoogle();
+        if (!newToken) return false;
+      }
+      
+      // Call Cloud Function
+      const exportFunction = httpsCallable(functions, 'exportToGoogleCalendar');
+      const result = await exportFunction({ eventId, accessToken });
+      
+      if (result.data.success) {
+        Alert.alert(
+          'Success',
+          'Event added to Google Calendar',
+          [
+            {
+              text: 'View in Calendar',
+              onPress: () => Linking.openURL(result.data.googleEventLink)
+            },
+            { text: 'OK' }
+          ]
+        );
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Export failed:', error);
+      Alert.alert('Error', 'Failed to add to Google Calendar');
+      return false;
+    }
+  }
+  ```
+
+#### UI Integration
+- [ ] **Add "Add to Google Calendar" button** to `CalendarEventCard.tsx`:
+  ```typescript
+  <Button
+    title="📅 Add to Google Calendar"
+    onPress={() => exportEventToGoogleCalendar(event.id)}
+    disabled={event.googleCalendarId !== undefined}  // Already synced
+    variant={event.googleCalendarId ? 'outline' : 'primary'}
+  />
+  
+  {event.googleCalendarId && (
+    <Text style={styles.synced}>✓ Synced to Google Calendar</Text>
+  )}
+  ```
+
+- [ ] **Add Google Calendar settings** to Profile screen:
+  ```typescript
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Google Calendar</Text>
+    
+    {googleCalendarConnected ? (
+      <>
+        <Text style={styles.connectedText}>
+          ✓ Connected as {googleEmail}
+        </Text>
+        <Button
+          title="Disconnect"
+          onPress={disconnectGoogleCalendar}
+          variant="outline"
+        />
+        <Toggle
+          label="Auto-sync extracted events"
+          value={autoSyncEnabled}
+          onValueChange={setAutoSyncEnabled}
+        />
+      </>
+    ) : (
+      <Button
+        title="Connect Google Calendar"
+        onPress={signInWithGoogle}
+        icon="logo-google"
+      />
+    )}
+  </View>
+  ```
+
+#### Bidirectional Sync (Optional - Phase 2)
+- [ ] **Scheduled Sync Function**: `functions/src/syncGoogleCalendar.ts`
+  ```typescript
+  export const syncGoogleCalendar = functions.pubsub
+    .schedule('every 6 hours')
+    .onRun(async () => {
+      // Get all users with Google Calendar connected
+      const users = await getUsersWithGoogleCalendar();
+      
+      for (const user of users) {
+        try {
+          await syncUserCalendar(user);
+        } catch (error) {
+          console.error(`Sync failed for user ${user.id}:`, error);
+        }
+      }
+    });
+  
+  async function syncUserCalendar(user: User) {
+    // Refresh access token if needed
+    const accessToken = await refreshGoogleToken(user.googleRefreshToken);
+    
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    
+    // Fetch events modified since last sync
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: user.lastGoogleCalendarSync?.toDate().toISOString(),
+      showDeleted: true,
+      singleEvents: true,
+      orderBy: 'updated'
+    });
+    
+    const googleEvents = response.data.items || [];
+    
+    for (const googleEvent of googleEvents) {
+      // Check if this event came from our app
+      const appEventId = googleEvent.extendedProperties?.private?.appEventId;
+      
+      if (appEventId) {
+        // Update our event if changed in Google Calendar
+        await syncEventFromGoogle(appEventId, googleEvent);
+      } else {
+        // This is a new external event - optionally import
+        if (user.preferences.importExternalEvents) {
+          await importExternalEvent(user.id, googleEvent);
+        }
+      }
+    }
+    
+    // Update last sync timestamp
+    await firestore.collection('users').doc(user.id).update({
+      lastGoogleCalendarSync: FieldValue.serverTimestamp()
+    });
+  }
+  ```
+
+### Testing Google Calendar Integration
+- [ ] **OAuth flow test**:
+  - [ ] User clicks "Connect Google Calendar"
+  - [ ] Google sign-in screen appears
+  - [ ] User grants calendar permission
+  - [ ] Access token stored securely
+
+- [ ] **Export test**:
+  - [ ] Extract event from message
+  - [ ] Click "Add to Google Calendar"
+  - [ ] Verify event appears in Google Calendar
+  - [ ] Verify extended properties contain app metadata
+
+- [ ] **Sync status test**:
+  - [ ] Export event successfully
+  - [ ] UI shows "Synced to Google Calendar"
+  - [ ] Button disabled to prevent duplicates
+
+- [ ] **Error handling test**:
+  - [ ] Revoke Google Calendar permission
+  - [ ] Try to export event
+  - [ ] Verify graceful error message and re-auth prompt
+
+### Security Considerations
+- [ ] **Store tokens securely**: Use Expo SecureStore for refresh tokens
+- [ ] **Token refresh**: Implement automatic token refresh logic
+- [ ] **Revocation handling**: Gracefully handle when user revokes access
+- [ ] **Privacy**: Never access Google Calendar without explicit user consent
+- [ ] **Minimal scope**: Only request `calendar` scope, not full Google account
+
+### Cost Implications
+- **Google Calendar API**: Free (10,000 requests/day)
+- **OAuth overhead**: Minimal (token refresh ~1/hour per user)
+- **Cloud Function calls**: ~10-20/user/month for exports
+
+**Total Additional Cost: $0 (within free tier)**
+
+**Checkpoint**: ✅ Events seamlessly sync to Google Calendar
 
 ---
 
