@@ -5,6 +5,7 @@ export interface User {
   displayName: string;
   photoURL?: string;
   pushToken?: string;
+  pushTokenUpdatedAt?: Date;
   createdAt: Date;
   lastActive: Date;
   preferences?: {

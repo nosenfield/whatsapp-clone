@@ -14,14 +14,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourname.whatsappclone"
+      "bundleIdentifier": "com.nosenfield.whatsappclone"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yourname.whatsappclone"
+      "package": "com.nosenfield.whatsappclone"
     },
     "web": {
       "favicon": "./assets/favicon.png"

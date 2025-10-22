@@ -3,6 +3,7 @@ import { User } from '../types';
 import * as firebaseAuth from '../services/firebase-auth';
 import * as firestoreService from '../services/firebase-firestore';
 import { initializePresence, setPresence } from '../services/firebase-rtdb';
+import { registerForPushNotifications } from '../services/notifications';
 import { User as FirebaseUser } from 'firebase/auth';
 
 interface AuthState {
@@ -21,6 +22,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   initializeAuth: () => void;
   updateProfile: (updates: Partial<User>) => Promise<void>;
+  registerPushToken: (userId: string) => Promise<void>;
 }
 
 /**
@@ -101,6 +103,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('🟢 Initializing presence for new user');
       await initializePresence(firebaseUser.uid);
 
+      // Register push notification token
+      await get().registerPushToken(firebaseUser.uid);
+
       console.log('✅ User signed up successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign up error:', error);
@@ -149,6 +154,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Initialize presence system
       console.log('🟢 Initializing presence for signed-in user');
       await initializePresence(firebaseUser.uid);
+
+      // Register push notification token
+      await get().registerPushToken(firebaseUser.uid);
 
       console.log('✅ User signed in successfully:', user.email);
     } catch (error: any) {
@@ -230,6 +238,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           console.log('🟢 Initializing presence for restored user');
           await initializePresence(firebaseUser.uid);
 
+          // Register push notification token
+          await get().registerPushToken(firebaseUser.uid);
+
           console.log('✅ Auth state restored:', user.email);
         } catch (error: any) {
           console.error('❌ Error loading user data:', error);
@@ -287,6 +298,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
       throw error;
+    }
+  },
+
+  /**
+   * Register push notification token for the user
+   * Should be called after sign in/sign up
+   */
+  registerPushToken: async (userId: string) => {
+    try {
+      console.log('📱 Registering push token for user:', userId);
+
+      // Get push token from Expo
+      const pushToken = await registerForPushNotifications(userId);
+
+      if (!pushToken) {
+        console.warn('⚠️ No push token received (simulator or permission denied)');
+        return;
+      }
+
+      // Save token to Firestore
+      await firestoreService.updateUser(userId, {
+        pushToken,
+        pushTokenUpdatedAt: new Date(),
+      });
+
+      console.log('✅ Push token registered and saved to Firestore');
+    } catch (error: any) {
+      console.error('❌ Error registering push token:', error);
+      // Don't throw - push notification failure shouldn't block app usage
     }
   },
 }));
