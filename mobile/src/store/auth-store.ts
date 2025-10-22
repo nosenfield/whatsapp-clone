@@ -4,6 +4,7 @@ import * as firebaseAuth from '../services/firebase-auth';
 import * as firestoreService from '../services/firebase-firestore';
 import { initializePresence, setPresence } from '../services/firebase-rtdb';
 import { registerForPushNotifications } from '../services/notifications';
+import { getAuthErrorMessage, getFirestoreErrorMessage } from '../utils/error-messages';
 import { User as FirebaseUser } from 'firebase/auth';
 
 interface AuthState {
@@ -109,8 +110,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed up successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign up error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign up',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -161,8 +163,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed in successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign in error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign in',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -196,8 +199,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed out successfully');
     } catch (error: any) {
       console.error('❌ Sign out error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign out',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -244,11 +248,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           console.log('✅ Auth state restored:', user.email);
         } catch (error: any) {
           console.error('❌ Error loading user data:', error);
+          const errorMessage = getFirestoreErrorMessage(error);
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
-            error: error.message,
+            error: errorMessage,
           });
         }
       } else {
@@ -293,8 +298,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ Profile updated successfully');
     } catch (error: any) {
       console.error('❌ Update profile error:', error);
+      const errorMessage = getFirestoreErrorMessage(error);
       set({
-        error: error.message || 'Failed to update profile',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
