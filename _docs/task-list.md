@@ -697,112 +697,97 @@ Last Updated: October 22, 2025
 **Goal**: Notify users of new messages when app is closed or backgrounded
 
 ### Expo Push Notification Setup
-- [ ] Register for push notifications in `app/_layout.tsx`:
-  - [ ] Request notification permissions (iOS)
-  - [ ] Get Expo push token
-  - [ ] Store token in Firestore `/users/{userId}/pushToken`
-  - [ ] Update token on app launch (in case it changes)
-- [ ] Create `src/services/notifications.ts`:
-  - [ ] `registerForPushNotifications(userId)`
-  - [ ] `handleNotificationReceived(notification)`
-  - [ ] `handleNotificationResponse(response)` - tap to open
-- [ ] Set up notification listeners:
-  - [ ] Foreground notification handler (show in-app alert)
-  - [ ] Background/killed notification handler (deep link to conversation)
+- [x] Register for push notifications in `app/_layout.tsx`:
+  - [x] Request notification permissions (iOS)
+  - [x] Get Expo push token
+  - [x] Store token in Firestore `/users/{userId}/pushToken`
+  - [x] Update token on app launch (in case it changes)
+- [x] Create `src/services/notifications.ts`:
+  - [x] `registerForPushNotifications(userId)`
+  - [x] `handleNotificationReceived(notification)`
+  - [x] `handleNotificationResponse(response)` - tap to open
+- [x] Set up notification listeners:
+  - [x] Foreground notification handler (show in-app alert)
+  - [x] Background/killed notification handler (deep link to conversation)
 - [ ] Test push token registration:
-  - [ ] Open app on device
+  - [ ] Open app on device (requires physical iPhone)
   - [ ] Verify pushToken saved in Firestore
 
 ### Cloud Function for Push Notifications
-- [ ] Create Cloud Function: `functions/src/sendMessageNotification.ts`
-  ```typescript
-  export const sendMessageNotification = functions.firestore
-    .document('conversations/{conversationId}/messages/{messageId}')
-    .onCreate(async (snap, context) => {
-      const message = snap.data();
-      const conversationId = context.params.conversationId;
-      
-      // Get conversation participants
-      // Exclude message sender
-      // Get push tokens for recipients
-      // Check if recipients are active in this conversation (don't notify if open)
-      // Send push via Expo Push API
-    });
-  ```
-- [ ] Implement notification payload:
-  ```typescript
-  {
-    to: userPushToken,
-    title: senderName,
-    body: messagePreview,
-    data: {
-      conversationId: conversationId,
-      messageId: messageId,
-      type: 'new_message'
-    },
-    sound: 'default',
-    badge: unreadCount
-  }
-  ```
-- [ ] Handle batch sending for groups (use Expo's batch API)
-- [ ] Add retry logic for failed sends
-- [ ] Deploy function: `firebase deploy --only functions`
+- [x] Create Cloud Function: `functions/src/index.ts` (sendMessageNotification)
+  - [x] Triggers on `/conversations/{conversationId}/messages/{messageId}` creation
+  - [x] Get conversation participants
+  - [x] Exclude message sender
+  - [x] Get push tokens for recipients
+  - [x] Validate Expo push tokens
+  - [x] Check notification preferences (`notificationsEnabled`)
+  - [x] Send push via Expo Push API
+  - [ ] Check if recipients are active in conversation (optional - not implemented)
+- [x] Implement notification payload:
+  - [x] Title: sender name or group name
+  - [x] Body: message text or "📷 Image"
+  - [x] Data: conversationId, messageId, senderId, senderName, type: 'new_message'
+  - [x] Sound: 'default'
+  - [x] Badge: 1 (hardcoded - actual unread count not implemented)
+  - [x] Priority: 'high'
+- [x] Handle batch sending for groups (uses `expo.chunkPushNotifications()`)
+- [x] Add retry logic for failed sends (handled by Expo SDK)
+- [x] Deploy function: `firebase deploy --only functions` (deployed October 22, 2025)
 
 ### Notification Handling in App
-- [ ] Implement deep linking:
-  - [ ] Configure URL scheme in `app.json`
-  - [ ] Handle notification tap → navigate to conversation
-  - [ ] Extract `conversationId` from notification data
-  - [ ] Navigate using Expo Router
-- [ ] Update badge count on app icon:
-  - [ ] Calculate total unread across all conversations
-  - [ ] Set badge number using Expo Notifications
-  - [ ] Clear badge when app opens
-- [ ] Implement notification suppression:
+- [x] Implement deep linking:
+  - [x] Configure URL scheme in `app.json` (scheme: "whatsappclone")
+  - [x] Handle notification tap → navigate to conversation
+  - [x] Extract `conversationId` from notification data
+  - [x] Navigate using Expo Router
+- [x] Update badge count on app icon:
+  - [ ] Calculate total unread across all conversations (not implemented - hardcoded to 1)
+  - [x] Set badge number using Expo Notifications (Cloud Function sets badge: 1)
+  - [ ] Clear badge when app opens (not implemented - optional enhancement)
+- [ ] Implement notification suppression (optional - not implemented):
   - [ ] Don't send notification if user is actively viewing the conversation
   - [ ] Track "active conversation" in RTDB or Firestore
   - [ ] Cloud Function checks before sending
 
 ### Notification Preferences (Basic)
-- [ ] Add notification toggle to profile settings:
-  - [ ] Enable/disable all notifications
-  - [ ] Store preference in Firestore
-  - [ ] Cloud Function respects this setting
-- [ ] Test notification preferences:
-  - [ ] Disable notifications
-  - [ ] Send message from another user
-  - [ ] Verify no notification received
-  - [ ] Re-enable and verify notifications work
+- [x] Add notification toggle to profile settings:
+  - [x] Enable/disable all notifications
+  - [x] Store preference in Firestore (`notificationsEnabled` field)
+  - [x] Cloud Function respects this setting
+- [x] Test notification preferences (requires physical device):
+  - [x] OS-level toggle (iPhone Settings) - Working ✅
+  - [x] In-app toggle (Profile screen) - Fixed and deployed ✅
+  - [x] Verify Cloud Function respects preference - Working ✅
 
-### Testing Push Notifications
-- [ ] **Foreground notifications**:
-  - [ ] App open, conversation closed
-  - [ ] Verify banner appears
-  - [ ] Tap banner → navigate to conversation
-- [ ] **Background notifications**:
-  - [ ] App in background
-  - [ ] Send message from another device
-  - [ ] Verify iOS notification appears
-  - [ ] Tap notification → app opens to conversation
-- [ ] **Killed app notifications**:
-  - [ ] Force quit app
-  - [ ] Send message
-  - [ ] Verify notification appears
-  - [ ] Tap → app launches to conversation
-- [ ] **Group notifications**:
-  - [ ] Send group message
-  - [ ] Verify all members receive notification
-  - [ ] Verify sender doesn't receive own notification
-- [ ] **Notification while in conversation**:
+### Testing Push Notifications (All require physical iPhone device)
+- [x] **Foreground notifications**:
+  - [x] App open, conversation closed
+  - [x] Verify banner appears
+  - [x] Tap banner → navigate to conversation
+- [x] **Background notifications**:
+  - [x] App in background
+  - [x] Send message from another device
+  - [x] Verify iOS notification appears
+  - [x] Tap notification → app opens to conversation
+- [x] **Killed app notifications**:
+  - [x] Force quit app
+  - [x] Send message
+  - [x] Verify notification appears
+  - [x] Tap → app launches to conversation
+- [x] **Group notifications**:
+  - [x] Send group message
+  - [x] Verify all members receive notification
+  - [x] Verify sender doesn't receive own notification
+- [ ] **Notification while in conversation** (optional - suppression not implemented):
   - [ ] User A viewing conversation with User B
   - [ ] User B sends message
-  - [ ] Verify User A doesn't get notification (already viewing)
+  - [ ] Currently WILL send notification (suppression not implemented)
 
 ### iOS-Specific Requirements
-- [ ] Ensure `GoogleService-Info.plist` is properly configured
-- [ ] Verify APNs key is set up in Firebase Console
-- [ ] Configure notification capabilities in Xcode (when building EAS)
-- [ ] Test on physical iOS device (push doesn't work in simulator)
+- [x] Ensure `GoogleService-Info.plist` is properly configured
+- [x] Verify APNs key is set up in Firebase Console
+- [x] Configure notification capabilities in Xcode (happens automatically with EAS build)
+- [x] Test on physical iOS device (push doesn't work in simulator)
 
 **Checkpoint**: ✅ Push notifications working for all message scenarios
 
