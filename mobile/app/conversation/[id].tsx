@@ -36,20 +36,33 @@ export default function ConversationScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
-  // Get conversation details and other participant name
-  const otherParticipant = conversation?.participants.find(
-    (p) => p !== currentUser?.id
-  );
-  const otherParticipantName =
-    otherParticipant && conversation?.participantDetails[otherParticipant]
-      ? conversation.participantDetails[otherParticipant].displayName
-      : 'Chat';
+  // Determine if this is a group conversation
+  const isGroup = conversation?.type === 'group';
 
-  // Subscribe to other participant's presence
-  const presence = usePresence(otherParticipant);
+  // Get conversation display name
+  const conversationName = isGroup
+    ? conversation?.name || 'Group Chat'
+    : (() => {
+        const otherParticipant = conversation?.participants.find(
+          (p) => p !== currentUser?.id
+        );
+        return otherParticipant && conversation?.participantDetails[otherParticipant]
+          ? conversation.participantDetails[otherParticipant].displayName
+          : 'Chat';
+      })();
 
-  // Format header subtitle (online status or last seen)
-  const headerSubtitle = presence.online
+  // Get other participant ID (for presence in direct chats)
+  const otherParticipantId = !isGroup
+    ? conversation?.participants.find((p) => p !== currentUser?.id)
+    : undefined;
+
+  // Subscribe to other participant's presence (only for direct chats)
+  const presence = usePresence(otherParticipantId);
+
+  // Format header subtitle
+  const headerSubtitle = isGroup
+    ? `${conversation?.participants.length || 0} members`
+    : presence.online
     ? 'online'
     : formatLastSeen(presence.lastSeen);
 
@@ -362,13 +375,13 @@ export default function ConversationScreen() {
     <>
       <Stack.Screen
         options={{
-          title: otherParticipantName,
+          title: conversationName,
           headerShown: true,
           headerTitleAlign: 'left',
           headerBackTitle: 'Chats',
           headerTitle: () => (
             <View>
-              <Text style={styles.headerTitle}>{otherParticipantName}</Text>
+              <Text style={styles.headerTitle}>{conversationName}</Text>
               <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
             </View>
           ),
@@ -380,6 +393,7 @@ export default function ConversationScreen() {
           messages={allMessages}
           currentUserId={currentUser?.id || ''}
           isLoading={false}
+          conversation={conversation}
         />
         {typingText && (
           <View style={styles.typingIndicatorContainer}>

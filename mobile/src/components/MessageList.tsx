@@ -1,19 +1,23 @@
 import { FlatList, StyleSheet, View, Text } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MessageBubble } from './MessageBubble';
-import { Message } from '../types';
+import { Message, Conversation } from '../types';
 
 interface MessageListProps {
   messages: Message[];
   currentUserId: string;
   isLoading?: boolean;
+  conversation?: Conversation | null;
 }
 
 export function MessageList({
   messages,
   currentUserId,
   isLoading = false,
+  conversation,
 }: MessageListProps) {
+  const isGroup = conversation?.type === 'group';
+
   if (isLoading) {
     return (
       <View style={styles.centerContent}>
@@ -41,6 +45,8 @@ export function MessageList({
         <MessageBubble
           message={item}
           isOwnMessage={item.senderId === currentUserId}
+          showSender={isGroup}
+          conversation={conversation || undefined}
         />
       )}
       keyExtractor={(item) => item.id || item.localId || String(item.timestamp)}

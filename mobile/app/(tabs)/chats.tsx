@@ -7,6 +7,8 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -31,7 +33,27 @@ export default function ChatsScreen() {
   );
 
   const handleNewChat = () => {
-    router.push('/new-conversation');
+    // Show action sheet to choose between new conversation or new group
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'New Conversation', 'New Group'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            // New Conversation
+            router.push('/new-conversation');
+          } else if (buttonIndex === 2) {
+            // New Group
+            router.push('/new-group');
+          }
+        }
+      );
+    } else {
+      // Android fallback - just go to new conversation (or implement a modal)
+      router.push('/new-conversation');
+    }
   };
 
   const handleConversationPress = (conversationId: string) => {

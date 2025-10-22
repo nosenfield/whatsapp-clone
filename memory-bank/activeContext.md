@@ -1,22 +1,75 @@
 # Active Context
 
 **Last Updated:** October 21, 2025  
-**Current Phase:** Phase 3 Complete → Ready for Phase 4  
-**Status:** Phase 3 Complete (100%), Presence & Typing Working
+**Current Phase:** Phase 4 Complete → Ready for Phase 5  
+**Status:** Phase 4 Complete (100%), Media & Groups Working
 
 ---
 
 ## Current Focus
 
-We have just **completed Phase 3: Presence & Ephemeral Data**! Users can now see online/offline status with green dots, "last seen" timestamps, and real-time typing indicators ("John is typing...").
+We have just **completed Phase 4: Media & Group Chat**! Users can now send images with captions and create group conversations with up to 20 members. Groups display properly with green icons, member counts, and sender names on messages.
 
-**Phase 3 Achievement**: ✅ Real-time presence and typing indicators working across the app
+**Phase 4 Achievement**: ✅ Image messaging and group chat functionality complete
 
-**Next Phase**: Phase 4 - Media & Group Chat (image messages, group conversations up to 20 users)
+**Next Phase**: Phase 5 - Push Notifications (requires physical iPhone device)
 
 ---
 
 ## What We Just Completed
+
+### Phase 4: Media & Group Chat (100% Implementation)
+
+**All Sub-tasks Complete (Session 3, October 21, 2025):**
+
+1. ✅ **Image Upload & Display** (Pre-existing - Verified)
+   - Image picker with camera and library options
+   - Image compression and thumbnail generation
+   - Upload to Firebase Storage
+   - Optimistic UI with local preview
+   - Caption support
+   - Loading and error states
+
+2. ✅ **New Group Screen**
+   - Created `new-group.tsx` with member selection
+   - Search users by email
+   - Multi-select interface with chips
+   - Group name input
+   - Member count display (X/20)
+   - Enforces 2-20 member limit
+   - Create button in header
+   - Auto-navigate to group after creation
+
+3. ✅ **Group Creation Service**
+   - `createGroupConversation()` function
+   - Validates participant count and creator
+   - Fetches participant details
+   - Creates group conversation document
+   - Returns conversation ID
+
+4. ✅ **Navigation Updates**
+   - FAB shows ActionSheet (New Conversation | New Group)
+   - Routes to `/new-group` screen
+   - iOS ActionSheet integration
+
+5. ✅ **Conversation List Group Support**
+   - Group names display correctly
+   - Green group icons (vs blue for direct)
+   - No online indicator for groups
+   - Sender names in last message preview ("John: Hello")
+   - "You: " prefix for own messages
+
+6. ✅ **Conversation Screen Group Support**
+   - Group name in header
+   - Member count subtitle ("5 members")
+   - No presence subscription for groups
+   - Pass conversation to MessageList
+
+7. ✅ **Message Display in Groups**
+   - Sender names above message bubbles
+   - Only for messages from others
+   - Uses participant details from conversation
+   - Falls back to "Unknown" if missing
 
 ### Phase 3: Presence & Ephemeral Data (100% Implementation)
 
@@ -126,6 +179,63 @@ We have just **completed Phase 3: Presence & Ephemeral Data**! Users can now see
 ## Recent Changes
 
 ### Completed Today (October 21, 2025)
+
+**Session 3: Phase 4 Implementation (~1.5 hours)**
+
+**1. New Group Screen**
+- Created `new-group.tsx` with member selection UI
+- Search by email, multi-select with chips
+- Group name input with validation
+- **Impact**: Users can create groups up to 20 members
+- **File**: `mobile/app/new-group.tsx` (new)
+
+**2. Group Creation Service**
+- Added `createGroupConversation()` to conversation-service
+- Validates 2-20 members, fetches participant details
+- **Impact**: Backend support for group creation
+- **File**: `mobile/src/services/conversation-service.ts` (modified)
+
+**3. Group Navigation**
+- Added ActionSheet to FAB (New Conversation | New Group)
+- Routes to new-group screen
+- **Impact**: Easy access to group creation
+- **File**: `mobile/app/(tabs)/chats.tsx` (modified)
+
+**4. Conversation List Group Support**
+- Updated ConversationItem for groups
+- Green icons, member names in preview, no online indicator
+- **Impact**: Groups display properly in list
+- **File**: `mobile/src/components/ConversationItem.tsx` (modified)
+
+**5. Conversation Screen Group Support**
+- Group name in header, member count subtitle
+- No presence for groups
+- **Impact**: Group conversations display correctly
+- **File**: `mobile/app/conversation/[id].tsx` (modified)
+
+**6. Message List Group Support**
+- Pass conversation to MessageBubble
+- Show sender names for groups
+- **Impact**: Users can see who sent each message
+- **Files**:
+  - `mobile/src/components/MessageList.tsx` (modified)
+  - `mobile/src/components/MessageBubble.tsx` (already supported)
+
+**Documentation Updates:**
+- Created `context-summaries/2025-10-21-phase-4-media-and-groups.md`
+- Updated `memory-bank/activeContext.md`
+- Updated `memory-bank/progress.md`
+
+**Commit:**
+```
+[PHASE-4] Media & Group Chat complete
+- Image upload verified (pre-existing)
+- Group creation with 2-20 members
+- Group UI with green icons and member counts
+- Sender names in group messages
+```
+
+---
 
 **Session 2: Phase 3 Implementation (~2 hours)**
 
@@ -324,7 +434,7 @@ useEffect(() => {
 - ✅ Conversation list with previews
 - ✅ Pull-to-refresh
 
-### Presence & Typing (Phase 3) 🆕
+### Presence & Typing (Phase 3)
 - ✅ Online/offline indicators (green dots)
 - ✅ "Last seen" timestamps
 - ✅ Real-time presence updates (<50ms)
@@ -332,6 +442,19 @@ useEffect(() => {
 - ✅ Auto-clear typing after 5 seconds
 - ✅ Connection state monitoring
 - ✅ Automatic online/offline on app lifecycle
+
+### Media & Groups (Phase 4) 🆕
+- ✅ Send images with captions
+- ✅ Image compression and thumbnails
+- ✅ Upload to Firebase Storage
+- ✅ Display images in message bubbles
+- ✅ Create groups (2-20 members)
+- ✅ Search and add members
+- ✅ Group name input
+- ✅ Green group icons (vs blue for direct)
+- ✅ Group header shows member count
+- ✅ Sender names in group messages
+- ✅ Last message preview with sender name
 
 ### Infrastructure
 - ✅ Error boundary (application-level)
@@ -348,59 +471,66 @@ useEffect(() => {
 
 ## What's Next
 
-### Immediate: Testing Phase 3 Features
+### Immediate: Testing Phase 4 Features
 
-Recommended testing before Phase 4:
+Recommended manual testing before Phase 5:
 
-1. ⏳ Test presence with two accounts
-   - Verify green dot appears when user is online
-   - Verify "last seen" shows when user is offline
-   - Test across conversation list and conversation header
+1. ⏳ Test group creation
+   - Create group with 2 members (minimum)
+   - Create group with 10 members (mid-range)
+   - Create group with 20 members (maximum)
+   - Verify member count display
+   - Test search and member selection
 
-2. ⏳ Test typing indicators
-   - Start typing from User A
-   - Verify User B sees "User A is typing..."
-   - Verify indicator clears after 5 seconds
-   - Verify indicator clears on message send
+2. ⏳ Test group messaging
+   - Send text messages in group
+   - Send image messages in group
+   - Verify sender names appear
+   - Test with 3+ accounts simultaneously
 
-3. ⏳ Test connection handling
-   - Enable airplane mode
-   - Verify user goes offline
-   - Disable airplane mode
-   - Verify user comes back online
+3. ⏳ Test group UI
+   - Verify green group icons
+   - Verify member count in header
+   - Verify last message preview with sender name
+   - Test typing indicators in groups
 
-### Next Phase: Phase 4 - Media & Group Chat
+### Next Phase: Phase 5 - Push Notifications
 
-**Goal**: Send images and support group conversations (up to 20 users)
+**Goal**: Notify users of new messages when app is closed or backgrounded
+
+**Requirements:**
+- ⚠️ **Physical iPhone device required** (simulator doesn't support push)
+- ⚠️ APNs key configured in Firebase Console
+- ⚠️ Apple Developer account ($99/year)
 
 **Key Tasks:**
-1. Image Upload & Display
-   - Image picker integration
-   - Upload to Firebase Storage
-   - Display images in message bubbles
-   - Thumbnail generation
-   - Image compression
+1. Expo Push Token Registration
+   - Request notification permissions
+   - Get and store push tokens
+   - Update token on app launch
 
-2. Group Chat Foundation
-   - Group creation screen
-   - Select multiple participants (up to 20)
-   - Group name input
-   - Group conversation creation
+2. Cloud Function for Notifications
+   - Trigger on new message
+   - Send push via Expo Push API
+   - Handle group notifications
+   - Respect notification preferences
 
-3. Group Messaging
-   - Send messages to groups
-   - Show sender name in bubbles
-   - Group-specific typing indicators
-   - Read receipts for groups
+3. Notification Handling
+   - Foreground notifications
+   - Background notifications
+   - Deep linking to conversations
+   - Badge count updates
 
-4. Cloud Functions (Optional)
-   - Image thumbnail generation
-   - Media processing
+4. Testing
+   - Test with app in foreground
+   - Test with app in background
+   - Test with app killed
+   - Test group notifications
 
 **Dependencies:**
-- ✅ Phase 2 messaging stable
-- ✅ Phase 3 presence working
-- Firebase Storage service (already created in Phase 1)
+- ✅ Phase 2, 3, 4 complete
+- ⚠️ Physical iPhone device
+- ⚠️ APNs key configured
 
 ---
 

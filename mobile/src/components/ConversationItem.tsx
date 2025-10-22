@@ -14,15 +14,26 @@ export const ConversationItem = ({
   currentUserId,
   onPress,
 }: ConversationItemProps) => {
-  // Get other participant details
-  const otherParticipantId = conversation.participants.find(
-    (p) => p !== currentUserId
-  );
-  const otherParticipantName = otherParticipantId
-    ? conversation.participantDetails[otherParticipantId]?.displayName || 'Unknown'
-    : 'Unknown';
+  const isGroup = conversation.type === 'group';
 
-  // Subscribe to other participant's presence
+  // Get conversation display name
+  const displayName = isGroup
+    ? conversation.name || 'Group Chat'
+    : (() => {
+        const otherParticipantId = conversation.participants.find(
+          (p) => p !== currentUserId
+        );
+        return otherParticipantId
+          ? conversation.participantDetails[otherParticipantId]?.displayName || 'Unknown'
+          : 'Unknown';
+      })();
+
+  // Get other participant ID (for presence in direct chats)
+  const otherParticipantId = !isGroup
+    ? conversation.participants.find((p) => p !== currentUserId)
+    : undefined;
+
+  // Subscribe to other participant's presence (only for direct chats)
   const presence = usePresence(otherParticipantId);
 
   // Format last message preview based on message type
@@ -30,13 +41,26 @@ export const ConversationItem = ({
     if (!conversation.lastMessage) {
       return 'No messages yet';
     }
+
+    const senderName =
+      isGroup && conversation.lastMessage.senderId !== currentUserId
+        ? conversation.participantDetails[conversation.lastMessage.senderId]?.displayName || 'Someone'
+        : conversation.lastMessage.senderId === currentUserId
+        ? 'You'
+        : '';
     
-    // If it's a text message with content, show it
+    // If it's a text message with content, show it with sender name for groups
     if (conversation.lastMessage.text) {
+      if (isGroup && senderName) {
+        return `${senderName}: ${conversation.lastMessage.text}`;
+      }
       return conversation.lastMessage.text;
     }
     
     // Otherwise, it's likely a media message - show appropriate placeholder
+    if (isGroup && senderName) {
+      return `${senderName}: 📷 Image`;
+    }
     return '📷 Image';
   };
 
@@ -72,16 +96,20 @@ export const ConversationItem = ({
       onPress={() => onPress(conversation.id)}
     >
       <View style={styles.avatarContainer}>
-        <View style={styles.avatar}>
-          <MaterialIcons name="person" size={28} color="#fff" />
+        <View style={[styles.avatar, isGroup && styles.groupAvatar]}>
+          <MaterialIcons
+            name={isGroup ? 'group' : 'person'}
+            size={isGroup ? 26 : 28}
+            color="#fff"
+          />
         </View>
-        {/* Online indicator - green dot if user is online */}
-        {presence.online && <View style={styles.onlineIndicator} />}
+        {/* Online indicator - green dot if user is online (only for direct chats) */}
+        {!isGroup && presence.online && <View style={styles.onlineIndicator} />}
       </View>
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
           <Text style={styles.conversationName} numberOfLines={1}>
-            {otherParticipantName}
+            {displayName}
           </Text>
           <Text style={styles.timestamp}>{formatTimestamp(timestamp)}</Text>
         </View>
@@ -112,6 +140,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  groupAvatar: {
+    backgroundColor: '#34C759', // Green for groups
   },
   onlineIndicator: {
     position: 'absolute',

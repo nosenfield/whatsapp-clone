@@ -61,8 +61,8 @@ export default function NewConversationScreen() {
         selectedUser.id
       );
 
-      // Navigate to conversation screen
-      router.push(`/conversation/${conversationId}`);
+      // Navigate to conversation screen (replace to avoid back button issue)
+      router.replace(`/conversation/${conversationId}`);
     } catch (error) {
       console.error('Error creating conversation:', error);
       Alert.alert('Error', 'Failed to start conversation. Please try again.');

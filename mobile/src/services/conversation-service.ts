@@ -155,6 +155,89 @@ export const getConversationById = async (
 };
 
 /**
+ * Create a new group conversation
+ * @param creatorId - User ID of the group creator
+ * @param participantIds - Array of all participant user IDs (including creator)
+ * @param groupName - Name of the group
+ * @returns The ID of the created group conversation
+ */
+export const createGroupConversation = async (
+  creatorId: string,
+  participantIds: string[],
+  groupName: string
+): Promise<string> => {
+  try {
+    console.log('📝 Creating group conversation:', groupName);
+    console.log('   Creator:', creatorId);
+    console.log('   Participants:', participantIds.length);
+
+    // Validate participants
+    if (participantIds.length < 2) {
+      throw new Error('Group must have at least 2 members');
+    }
+
+    if (participantIds.length > 20) {
+      throw new Error('Group cannot have more than 20 members');
+    }
+
+    if (!participantIds.includes(creatorId)) {
+      throw new Error('Creator must be in participants list');
+    }
+
+    // Fetch details for all participants
+    const participantDetails: Record<string, { displayName: string; photoURL?: string }> = {};
+    
+    for (const userId of participantIds) {
+      const user = await getUserById(userId);
+      if (!user) {
+        console.error('Failed to fetch user:', userId);
+        throw new Error(`Failed to fetch user details for ${userId}`);
+      }
+      
+      // Only include photoURL if it exists (Firestore doesn't accept undefined)
+      const details: { displayName: string; photoURL?: string } = {
+        displayName: user.displayName,
+      };
+      
+      if (user.photoURL) {
+        details.photoURL = user.photoURL;
+      }
+      
+      participantDetails[userId] = details;
+    }
+
+    // Initialize unread count for all participants
+    const unreadCount: Record<string, number> = {};
+    participantIds.forEach(id => {
+      unreadCount[id] = 0;
+    });
+
+    // Create group conversation document
+    const conversationData = {
+      type: 'group',
+      name: groupName,
+      participants: participantIds,
+      participantDetails,
+      createdBy: creatorId,
+      createdAt: Timestamp.now(),
+      lastMessageAt: Timestamp.now(),
+      unreadCount,
+    };
+
+    const conversationRef = await addDoc(
+      collection(firestore, 'conversations'),
+      conversationData
+    );
+
+    console.log('✅ Created group conversation:', conversationRef.id);
+    return conversationRef.id;
+  } catch (error) {
+    console.error('Error creating group conversation:', error);
+    throw error;
+  }
+};
+
+/**
  * Get all conversations for a user
  */
 export const getUserConversations = async (userId: string): Promise<Conversation[]> => {
