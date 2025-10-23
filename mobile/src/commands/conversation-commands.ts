@@ -29,10 +29,15 @@ export class ConversationCommands {
   async findOrCreateConversation(
     command: FindOrCreateConversationCommand
   ): Promise<Conversation> {
-    const { searchUsersByEmail } = await import('../services/user-search');
+    const { searchUsersByEmail, searchUsersByDisplayName } = await import('../services/user-search');
     
-    // 1. Find contact by name/email
-    const contacts = await searchUsersByEmail(command.contactName);
+    // 1. Try to find contact by email first
+    let contacts = await searchUsersByEmail(command.contactName);
+    
+    // 2. If no email match, try display name search
+    if (contacts.length === 0) {
+      contacts = await searchUsersByDisplayName(command.contactName);
+    }
     
     if (contacts.length === 0) {
       throw new Error(`Contact "${command.contactName}" not found`);
@@ -40,23 +45,23 @@ export class ConversationCommands {
     
     const contact = contacts[0];
     
-    // 2. Create or get conversation
+    // 3. Create or get conversation
     const conversationId = await createOrGetConversation(
       command.userId,
       contact.id
     );
     
-    // 3. Fetch conversation data
+    // 4. Fetch conversation data
     const conversation = await getConversationById(conversationId);
     
     if (!conversation) {
       throw new Error('Failed to create conversation');
     }
     
-    // 4. Store in SQLite
+    // 5. Store in SQLite
     await upsertConversation(conversation);
     
-    // 5. Invalidate conversation list
+    // 6. Invalidate conversation list
     await this.queryClient.invalidateQueries({
       queryKey: ['conversations', command.userId],
     });

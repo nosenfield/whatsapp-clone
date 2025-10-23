@@ -13,6 +13,7 @@ jest.mock('../../../src/services/conversation-service', () => ({
 // Mock the user search service
 jest.mock('../../../src/services/user-search', () => ({
   searchUsersByEmail: jest.fn(),
+  searchUsersByDisplayName: jest.fn(),
 }));
 
 describe('ConversationCommands', () => {
@@ -38,7 +39,7 @@ describe('ConversationCommands', () => {
 
   test('findOrCreateConversation should create conversation and store in SQLite', async () => {
     // Setup mocks
-    const { searchUsersByEmail } = require('../../../src/services/user-search');
+    const { searchUsersByEmail, searchUsersByDisplayName } = require('../../../src/services/user-search');
     const { createOrGetConversation, getConversationById } = require('../../../src/services/conversation-service');
     
     const testUser = createTestUser({ id: 'contact-1', email: 'contact@example.com' });
@@ -48,6 +49,7 @@ describe('ConversationCommands', () => {
     });
     
     searchUsersByEmail.mockResolvedValue([testUser]);
+    searchUsersByDisplayName.mockResolvedValue([]);
     createOrGetConversation.mockResolvedValue('conv-new');
     getConversationById.mockResolvedValue(testConversation);
     
@@ -78,10 +80,41 @@ describe('ConversationCommands', () => {
     // The important thing is that invalidateQueries was called without error
   });
 
+  test('findOrCreateConversation should find contact by display name when email search fails', async () => {
+    // Setup mocks
+    const { searchUsersByEmail, searchUsersByDisplayName } = require('../../../src/services/user-search');
+    const { createOrGetConversation, getConversationById } = require('../../../src/services/conversation-service');
+    
+    const testUser = createTestUser({ id: 'contact-2', displayName: 'Noah', email: 'noah@example.com' });
+    const testConversation = createTestConversation({ 
+      id: 'conv-display-name',
+      participants: ['user-1', 'contact-2'],
+    });
+    
+    // Email search fails, but display name search succeeds
+    searchUsersByEmail.mockResolvedValue([]);
+    searchUsersByDisplayName.mockResolvedValue([testUser]);
+    createOrGetConversation.mockResolvedValue('conv-display-name');
+    getConversationById.mockResolvedValue(testConversation);
+    
+    // Execute
+    const conversation = await conversationCommands.findOrCreateConversation({
+      contactName: 'Noah',
+      userId: 'user-1',
+    });
+    
+    // Verify
+    expect(conversation.id).toBe('conv-display-name');
+    expect(searchUsersByEmail).toHaveBeenCalledWith('Noah');
+    expect(searchUsersByDisplayName).toHaveBeenCalledWith('Noah');
+    expect(createOrGetConversation).toHaveBeenCalledWith('user-1', 'contact-2');
+  });
+
   test('findOrCreateConversation should throw error if contact not found', async () => {
     // Setup mocks
-    const { searchUsersByEmail } = require('../../../src/services/user-search');
+    const { searchUsersByEmail, searchUsersByDisplayName } = require('../../../src/services/user-search');
     searchUsersByEmail.mockResolvedValue([]);
+    searchUsersByDisplayName.mockResolvedValue([]);
     
     // Execute and expect error
     await expect(
