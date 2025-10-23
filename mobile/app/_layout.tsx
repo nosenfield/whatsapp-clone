@@ -39,7 +39,13 @@ export default function RootLayout() {
     
     // Initialize authentication listener
     console.log('🔐 Initializing auth listener...');
-    useAuthStore.getState().initializeAuth();
+    (async () => {
+      try {
+        await useAuthStore.getState().initializeAuth();
+      } catch (error) {
+        console.error('❌ Auth initialization failed:', error);
+      }
+    })();
   }, []);
 
   // Set up notification handlers

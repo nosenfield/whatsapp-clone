@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Link, router } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/auth-store';
 
 export default function LoginScreen() {
@@ -20,6 +21,7 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const signIn = useAuthStore((state) => state.signIn);
+  const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
 
   const handleLogin = async () => {
     // Basic validation
@@ -57,6 +59,31 @@ export default function LoginScreen() {
       }
       
       Alert.alert('Login Failed', errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signInWithGoogle();
+      // Navigation will happen automatically via auth state change
+      router.replace('/(tabs)/chats');
+    } catch (error: any) {
+      console.error('Google Sign-In error:', error);
+      
+      // User-friendly error messages
+      let errorMessage = 'Failed to sign in with Google. Please try again.';
+      if (error.message?.includes('account already exists')) {
+        errorMessage = 'An account already exists with this email address using a different sign-in method.';
+      } else if (error.message?.includes('not enabled')) {
+        errorMessage = 'Google Sign-In is not available.';
+      } else if (error.message?.includes('disabled')) {
+        errorMessage = 'This account has been disabled.';
+      }
+      
+      Alert.alert('Google Sign-In Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -121,6 +148,23 @@ export default function LoginScreen() {
             ) : (
               <Text style={styles.buttonText}>Sign In</Text>
             )}
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Google Sign-In Button */}
+          <TouchableOpacity
+            style={[styles.googleButton, isLoading && styles.buttonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={isLoading}
+          >
+            <MaterialIcons name="login" size={20} color="#4285F4" />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
           {/* Sign Up Link */}
@@ -195,6 +239,37 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#666',
+  },
+  googleButton: {
+    height: 50,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  googleButtonText: {
+    color: '#333',
     fontSize: 16,
     fontWeight: '600',
   },
