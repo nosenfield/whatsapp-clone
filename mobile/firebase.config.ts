@@ -41,7 +41,7 @@ for (const key of requiredConfigKeys) {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 
-// Initialize services
+// Initialize Auth (will use default persistence)
 export const auth = getAuth(app);
 
 // Initialize Firestore with offline persistence

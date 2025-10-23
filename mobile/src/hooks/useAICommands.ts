@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/auth-store';
 import { AIToolExecutor, ToolCall } from '../services/ai-tool-executor';
 import { createUserFriendlyError, isRecoverableError, getRetryDelay } from '../utils/ai-error-handling';
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 interface AICommandResult {
   success: boolean;
@@ -172,9 +173,9 @@ export const useAICommands = (currentConversationId?: string) => {
           `When the user says "this conversation" or "here", they mean this conversation.`
         : `You are viewing the conversation list.`;
 
-      const messages = [
+      const messages: ChatCompletionMessageParam[] = [
         {
-          role: 'user' as const,
+          role: 'user',
           content: command
         }
       ];
@@ -214,7 +215,7 @@ Always be helpful and confirm actions before taking them. If you find multiple m
           role: 'assistant',
           content: response.choices[0]?.message?.content || '',
           tool_calls: toolCalls
-        });
+        } as ChatCompletionMessageParam);
 
         // Execute each tool call
         for (const toolCall of toolCalls) {
@@ -229,7 +230,7 @@ Always be helpful and confirm actions before taking them. If you find multiple m
               role: 'tool',
               content: JSON.stringify(toolResult),
               tool_call_id: toolCall.id
-            });
+            } as ChatCompletionMessageParam);
           }
         }
 

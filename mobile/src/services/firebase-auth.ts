@@ -9,7 +9,14 @@ import {
   GoogleAuthProvider,
   signInWithCredential,
 } from 'firebase/auth';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+
+// Conditionally import Google Sign-In to avoid errors in Expo Go
+let GoogleSignin: any = null;
+try {
+  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+} catch (error: any) {
+  console.warn('⚠️ Google Sign-In not available in this environment:', error.message);
+}
 
 export const signUp = async (
   email: string,
@@ -45,6 +52,11 @@ export const onAuthStateChanged = (
  * Should be called once when app starts
  */
 export const configureGoogleSignIn = async (): Promise<void> => {
+  if (!GoogleSignin) {
+    console.warn('⚠️ Google Sign-In not available - skipping configuration');
+    return;
+  }
+  
   try {
     await GoogleSignin.configure({
       webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -61,6 +73,10 @@ export const configureGoogleSignIn = async (): Promise<void> => {
  * Sign in with Google
  */
 export const signInWithGoogle = async (): Promise<FirebaseUser> => {
+  if (!GoogleSignin) {
+    throw new Error('Google Sign-In is not available in this environment. Please use email/password authentication.');
+  }
+  
   try {
     // Check if device supports Google Play Services
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -108,6 +124,10 @@ export const signInWithGoogle = async (): Promise<FirebaseUser> => {
  * Check if Google Sign-In is available
  */
 export const isGoogleSignInAvailable = async (): Promise<boolean> => {
+  if (!GoogleSignin) {
+    return false;
+  }
+  
   try {
     return await GoogleSignin.hasPlayServices();
   } catch (error) {

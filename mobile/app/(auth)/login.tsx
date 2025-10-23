@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,14 +14,31 @@ import {
 import { Link, router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/auth-store';
+import { isGoogleSignInAvailable } from '../../src/services/firebase-auth';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleAvailable, setIsGoogleAvailable] = useState(false);
 
   const signIn = useAuthStore((state) => state.signIn);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+
+  useEffect(() => {
+    // Check if Google Sign-In is available
+    const checkGoogleAvailability = async () => {
+      try {
+        const available = await isGoogleSignInAvailable();
+        setIsGoogleAvailable(available);
+      } catch (error) {
+        console.warn('⚠️ Error checking Google Sign-In availability:', error);
+        setIsGoogleAvailable(false);
+      }
+    };
+
+    checkGoogleAvailability();
+  }, []);
 
   const handleLogin = async () => {
     // Basic validation
@@ -150,22 +167,26 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          {/* Divider and Google Sign-In Button - only show if Google is available */}
+          {isGoogleAvailable && (
+            <>
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-          {/* Google Sign-In Button */}
-          <TouchableOpacity
-            style={[styles.googleButton, isLoading && styles.buttonDisabled]}
-            onPress={handleGoogleSignIn}
-            disabled={isLoading}
-          >
-            <MaterialIcons name="login" size={20} color="#4285F4" />
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
+              {/* Google Sign-In Button */}
+              <TouchableOpacity
+                style={[styles.googleButton, isLoading && styles.buttonDisabled]}
+                onPress={handleGoogleSignIn}
+                disabled={isLoading}
+              >
+                <MaterialIcons name="login" size={20} color="#4285F4" />
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* Sign Up Link */}
           <View style={styles.footer}>
