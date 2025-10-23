@@ -8,12 +8,14 @@ interface ConversationItemProps {
   conversation: Conversation;
   currentUserId: string;
   onPress: (conversationId: string) => void;
+  onLongPress?: (conversationId: string) => void;
 }
 
 export const ConversationItem = ({
   conversation,
   currentUserId,
   onPress,
+  onLongPress,
 }: ConversationItemProps) => {
   const isGroup = conversation.type === 'group';
 
@@ -113,6 +115,7 @@ export const ConversationItem = ({
     <TouchableOpacity
       style={styles.conversationItem}
       onPress={() => onPress(conversation.id)}
+      onLongPress={() => onLongPress?.(conversation.id)}
     >
       <View style={styles.avatarContainer}>
         <View style={[styles.avatar, isGroup && styles.groupAvatar]}>

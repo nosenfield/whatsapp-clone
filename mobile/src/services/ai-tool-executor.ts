@@ -1,5 +1,5 @@
 import { useAuthStore } from '../store/auth-store';
-import { searchUsersByEmail, searchUsersByDisplayName } from './user-search';
+import { searchUsersByEmailLegacy, searchUsersByDisplayNameLegacy } from './user-search';
 import { 
   createOrGetConversation, 
   getConversationById 
@@ -98,11 +98,11 @@ export class AIToolExecutor {
   }): Promise<ToolResponse> {
     try {
       // Search by email first (more precise)
-      let users = await searchUsersByEmail(params.query);
+      let users = await searchUsersByEmailLegacy(params.query);
       
       // If no email matches, try display name search
       if (users.length === 0) {
-        users = await searchUsersByDisplayName(params.query);
+        users = await searchUsersByDisplayNameLegacy(params.query);
       }
       
       // Apply limit

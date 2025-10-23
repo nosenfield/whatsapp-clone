@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ActionSheetIOS,
   Platform,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -19,6 +20,7 @@ import { ConversationItem } from '../../src/components/ConversationItem';
 import { AICommandButton } from '../../src/components/AICommandButton';
 import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Conversation } from '../../src/types';
+import { deleteConversation } from '../../src/services/conversation-service';
 
 export default function ChatsScreen() {
   const currentUser = useAuthStore((state) => state.user);
@@ -63,11 +65,57 @@ export default function ChatsScreen() {
     router.push(`/conversation/${conversationId}`);
   };
 
+  const handleConversationLongPress = (conversationId: string) => {
+    if (!currentUser?.id) return;
+
+    // Find the conversation to get its name for the confirmation dialog
+    const conversation = conversations?.find(c => c.id === conversationId);
+    const conversationName = conversation?.type === 'group' 
+      ? conversation.name || 'Group Chat'
+      : (() => {
+          const otherParticipantId = conversation?.participants.find(p => p !== currentUser.id);
+          return otherParticipantId 
+            ? conversation?.participantDetails[otherParticipantId]?.displayName || 'Unknown'
+            : 'Unknown';
+        })();
+
+    // Show confirmation dialog
+    Alert.alert(
+      'Delete Chat',
+      `Are you sure you want to delete "${conversationName}"? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteConversation(conversationId, currentUser.id);
+              // Refresh the conversations list
+              refetch();
+            } catch (error) {
+              console.error('Error deleting conversation:', error);
+              Alert.alert(
+                'Error',
+                'Failed to delete conversation. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderConversation = ({ item }: { item: Conversation }) => (
     <ConversationItem
       conversation={item}
       currentUserId={currentUser?.id || ''}
       onPress={handleConversationPress}
+      onLongPress={handleConversationLongPress}
     />
   );
 

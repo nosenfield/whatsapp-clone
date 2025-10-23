@@ -15,7 +15,13 @@
     "test:components": "jest --selectProjects COMPONENTS",
     "test:components:watch": "jest --selectProjects COMPONENTS --watch",
     "test:unit": "jest __tests__/unit",
-    "test:integration": "jest __tests__/integration"
+    "test:integration": "jest __tests__/integration",
+    "populate-presidents": "node scripts/populate-presidents.js",
+    "populate-presidents:emulator": "USE_FIREBASE_EMULATORS=true node scripts/populate-presidents.js",
+    "update-president-avatars": "node scripts/update-president-avatars.js",
+    "update-conversation-photos": "node scripts/update-conversation-photos.js",
+    "scrape-wikipedia-images": "node scripts/scrape-wikipedia-images.js",
+    "fix-broken-presidents": "node scripts/fix-broken-presidents.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

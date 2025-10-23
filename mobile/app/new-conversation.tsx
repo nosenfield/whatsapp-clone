@@ -12,39 +12,54 @@ import {
 import { router, Stack } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/store/auth-store';
-import { searchUsersByEmail } from '../src/services/user-search';
 import { createOrGetConversation } from '../src/services/conversation-service';
+import { useDebouncedSearch } from '../src/hooks/useDebouncedSearch';
+import { Avatar } from '../src/components/Avatar';
 import { User } from '../src/types';
-import { getBottomSafeArea } from '../src/constants/layout';
 
 export default function NewConversationScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   
   const currentUser = useAuthStore((state) => state.user);
+  
+  // Use debounced search hook for real-time search
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    isLoading: isSearching,
+    isLoadingMore,
+    error: searchError,
+    hasMore,
+    clearResults,
+    loadMore,
+  } = useDebouncedSearch({
+    delay: 300, // 300ms delay
+    minLength: 2, // Minimum 2 characters
+    searchBy: 'email', // Search by email
+    pageSize: 20, // 20 results per page
+  });
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
+  // Filter out current user from results
+  const filteredResults = searchResults.filter(user => user.id !== currentUser?.id);
 
-    setIsSearching(true);
-    try {
-      const results = await searchUsersByEmail(searchQuery.trim().toLowerCase());
-      
-      // Filter out current user from results
-      const filteredResults = results.filter(user => user.id !== currentUser?.id);
-      
-      setSearchResults(filteredResults);
-    } catch (error) {
-      console.error('Search error:', error);
-      Alert.alert('Search Failed', 'Unable to search for users. Please try again.');
-    } finally {
-      setIsSearching(false);
+  // Handle infinite scroll
+  const handleLoadMore = async () => {
+    if (hasMore && !isLoadingMore) {
+      await loadMore();
     }
+  };
+
+  // Render footer for loading more
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="small" color="#007AFF" />
+        <Text style={styles.loadingFooterText}>Loading more...</Text>
+      </View>
+    );
   };
 
   const handleSelectUser = async (selectedUser: User) => {
@@ -77,9 +92,12 @@ export default function NewConversationScreen() {
       onPress={() => handleSelectUser(item)}
       disabled={isCreatingConversation}
     >
-      <View style={styles.avatar}>
-        <MaterialIcons name="person" size={24} color="#fff" />
-      </View>
+      <Avatar
+        photoURL={item.photoURL}
+        displayName={item.displayName}
+        size={48}
+        backgroundColor="#007AFF"
+      />
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.displayName}</Text>
         <Text style={styles.userEmail}>{item.email}</Text>
@@ -99,18 +117,51 @@ export default function NewConversationScreen() {
         }}
       />
       <View style={styles.container}>
+        {/* Search Bar - Top */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <MaterialIcons name="search" size={20} color="#8E8E93" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by email..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={clearResults}>
+                <MaterialIcons name="close" size={20} color="#8E8E93" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* Results / Content Area */}
-        {isSearching ? (
+        {searchError ? (
+          <View style={styles.centerContent}>
+            <MaterialIcons name="error-outline" size={64} color="#FF3B30" />
+            <Text style={styles.emptyText}>Search Error</Text>
+            <Text style={styles.emptySubtext}>{searchError}</Text>
+          </View>
+        ) : isSearching ? (
           <View style={styles.centerContent}>
             <ActivityIndicator size="large" color="#007AFF" />
             <Text style={styles.loadingText}>Searching...</Text>
           </View>
-        ) : searchResults.length > 0 ? (
+        ) : filteredResults.length > 0 ? (
           <FlatList
-            data={searchResults}
+            data={filteredResults}
             renderItem={renderUserItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            style={styles.resultsList}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.1}
+            ListFooterComponent={renderFooter}
+            showsVerticalScrollIndicator={false}
           />
         ) : searchQuery.trim() && !isSearching ? (
           <View style={styles.centerContent}>
@@ -129,43 +180,6 @@ export default function NewConversationScreen() {
             </Text>
           </View>
         )}
-
-        {/* Search Bar - Bottom */}
-        <View style={[styles.searchContainer, { paddingBottom: getBottomSafeArea() + 16 }]}>
-          <View style={styles.searchInputContainer}>
-            <MaterialIcons name="search" size={20} color="#8E8E93" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by email..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={handleSearch}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => {
-                setSearchQuery('');
-                setSearchResults([]);
-              }}>
-                <MaterialIcons name="close" size={20} color="#8E8E93" />
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={handleSearch}
-            disabled={isSearching || !searchQuery.trim()}
-          >
-            {isSearching ? (
-              <ActivityIndicator size="small" color="#007AFF" />
-            ) : (
-              <Text style={styles.searchButtonText}>Search</Text>
-            )}
-          </TouchableOpacity>
-        </View>
 
         {/* Loading Overlay */}
         {isCreatingConversation && (
@@ -193,10 +207,11 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     paddingTop: 16,
+    paddingBottom: 16,
     paddingHorizontal: 16,
     gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
     backgroundColor: '#fff',
   },
   searchInputContainer: {
@@ -213,18 +228,11 @@ const styles = StyleSheet.create({
     height: 40,
     fontSize: 16,
   },
-  searchButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  searchButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   listContent: {
     padding: 16,
+  },
+  resultsList: {
+    flex: 1,
   },
   userItem: {
     flexDirection: 'row',
@@ -235,17 +243,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
   userInfo: {
     flex: 1,
+    marginLeft: 12,
   },
   userName: {
     fontSize: 16,
@@ -301,6 +301,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
     marginTop: 12,
+  },
+  loadingFooter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingFooterText: {
+    fontSize: 14,
+    color: '#8E8E93',
   },
 });
 

@@ -29,14 +29,14 @@ export class ConversationCommands {
   async findOrCreateConversation(
     command: FindOrCreateConversationCommand
   ): Promise<Conversation> {
-    const { searchUsersByEmail, searchUsersByDisplayName } = await import('../services/user-search');
+    const { searchUsersByEmailLegacy, searchUsersByDisplayNameLegacy } = await import('../services/user-search');
     
     // 1. Try to find contact by email first
-    let contacts = await searchUsersByEmail(command.contactName);
+    let contacts = await searchUsersByEmailLegacy(command.contactName);
     
     // 2. If no email match, try display name search
     if (contacts.length === 0) {
-      contacts = await searchUsersByDisplayName(command.contactName);
+      contacts = await searchUsersByDisplayNameLegacy(command.contactName);
     }
     
     if (contacts.length === 0) {
