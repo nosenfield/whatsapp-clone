@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,89 +8,87 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Platform,
+  ScrollView,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
-import { AICommandService, AppContext } from '../services/ai-command-service-unified';
-import { useAuthStore } from '../store/auth-store';
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useAICommands } from '../hooks/useAICommands';
+import { createUserFriendlyError } from '../utils/ai-error-handling';
 
 interface AICommandButtonProps {
-  appContext: AppContext;
+  currentConversationId?: string;
+  appContext?: any; // For compatibility with existing usage
   style?: any;
 }
 
-export function AICommandButton({ appContext, style }: AICommandButtonProps) {
+const SUGGESTED_COMMANDS = [
+  "Tell John I'm on my way",
+  "Open my conversation with Sarah",
+  "Start a new conversation with Alex",
+  "Summarize the most recent message",
+  "Summarize my most recent message",
+  "Summarize this conversation",
+];
+
+export const AICommandButton: React.FC<AICommandButtonProps> = ({
+  currentConversationId,
+  appContext,
+  style,
+}) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [command, setCommand] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const { user } = useAuthStore();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  
-  // Create AI service instance with QueryClient
-  const aiService = useMemo(
-    () => new AICommandService(queryClient),
-    [queryClient]
-  );
+  const { executeCommand, isProcessing, error } = useAICommands(currentConversationId);
 
-  const handleCommand = async () => {
-    if (!command.trim() || !user) return;
+  const handleCommandSubmit = async () => {
+    if (!command.trim()) return;
 
-    setIsProcessing(true);
-    try {
-      // AI now uses unified commands
-      const response = await aiService.processCommand(command.trim(), appContext);
+    console.log('🚀 Submitting AI command:', command);
+    const result = await executeCommand(command.trim());
+    console.log('📋 AI command result:', result);
+    
+    if (result.success) {
+      Alert.alert('Success', result.message);
+      setIsModalVisible(false);
+      setCommand('');
+    } else {
+      // Show error with suggestions if available
+      const friendlyError = createUserFriendlyError({ message: result.message });
+      const suggestions = friendlyError.suggestions;
       
-      if (response.success) {
-        // Handle the response based on action type
-        switch (response.action) {
-          case 'navigate_to_conversation':
-            if (response.result?.conversationId) {
-              router.push(`/conversation/${response.result.conversationId}`);
-            }
-            break;
-          case 'show_summary':
-            Alert.alert('AI Summary', response.response);
-            break;
-          case 'show_error':
-            Alert.alert('Error', response.error || 'Something went wrong');
-            break;
-          default:
-            Alert.alert('AI Response', response.response);
-        }
-        
-        // Close modal and clear command
-        setIsModalVisible(false);
-        setCommand('');
+      if (suggestions && suggestions.length > 0) {
+        Alert.alert(
+          'Error', 
+          result.message,
+          [
+            { text: 'OK', style: 'default' },
+            ...suggestions.map(suggestion => ({
+              text: suggestion,
+              style: 'default' as const,
+              onPress: () => setCommand(suggestion)
+            }))
+          ]
+        );
       } else {
-        Alert.alert('Error', response.error || 'Failed to process command');
+        Alert.alert('Error', result.message);
       }
-    } catch (error) {
-      console.error('AI command error:', error);
-      Alert.alert('Error', 'Failed to process AI command');
-    } finally {
-      setIsProcessing(false);
     }
   };
 
-  const suggestedCommands = [
-    "Start a new conversation with John",
-    "Open my conversation with Sarah",
-    "Tell Mike I'm on my way",
-    "Summarize this conversation",
-    "Summarize the most recent message",
-  ];
+  const handleSuggestedCommand = (suggestedCommand: string) => {
+    setCommand(suggestedCommand);
+  };
 
   return (
     <>
       <TouchableOpacity
-        style={[styles.fab, style]}
+        style={[styles.floatingButton, style]}
         onPress={() => setIsModalVisible(true)}
-        activeOpacity={0.8}
+        disabled={isProcessing}
       >
-        <MaterialIcons name="smart-toy" size={24} color="white" />
+        <Ionicons 
+          name="sparkles" 
+          size={24} 
+          color="white" 
+        />
       </TouchableOpacity>
 
       <Modal
@@ -100,57 +98,59 @@ export function AICommandButton({ appContext, style }: AICommandButtonProps) {
         onRequestClose={() => setIsModalVisible(false)}
       >
         <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>AI Assistant</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>AI Assistant</Text>
             <TouchableOpacity
               onPress={() => setIsModalVisible(false)}
               style={styles.closeButton}
             >
-              <MaterialIcons name="close" size={24} color="#666" />
+              <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.modalContent}>
-            <Text style={styles.instructionText}>
-              Tell me what you'd like to do:
-            </Text>
-
+          <ScrollView style={styles.content}>
+            <Text style={styles.subtitle}>What would you like me to help you with?</Text>
+            
             <TextInput
-              style={styles.commandInput}
-              placeholder="e.g., Start a new conversation with John"
+              style={styles.input}
+              placeholder="e.g., Tell John I'm on my way"
               value={command}
               onChangeText={setCommand}
               multiline
-              maxLength={200}
-              editable={!isProcessing}
+              autoFocus
             />
 
+            <Text style={styles.suggestionsTitle}>Suggested Commands:</Text>
             <View style={styles.suggestionsContainer}>
-              <Text style={styles.suggestionsTitle}>Suggested commands:</Text>
-              {suggestedCommands.map((suggestion, index) => (
+              {SUGGESTED_COMMANDS.map((suggestedCommand, index) => (
                 <TouchableOpacity
                   key={index}
                   style={styles.suggestionButton}
-                  onPress={() => setCommand(suggestion)}
-                  disabled={isProcessing}
+                  onPress={() => handleSuggestedCommand(suggestedCommand)}
                 >
-                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                  <Text style={styles.suggestionText}>{suggestedCommand}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
+            {error && (
+              <Text style={styles.errorText}>Error: {error}</Text>
+            )}
+          </ScrollView>
+
+          <View style={styles.footer}>
             <TouchableOpacity
-              style={[styles.sendButton, isProcessing && styles.sendButtonDisabled]}
-              onPress={handleCommand}
+              style={[
+                styles.submitButton,
+                (!command.trim() || isProcessing) && styles.submitButtonDisabled
+              ]}
+              onPress={handleCommandSubmit}
               disabled={!command.trim() || isProcessing}
             >
               {isProcessing ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator color="white" />
               ) : (
-                <>
-                  <MaterialIcons name="send" size={20} color="white" />
-                  <Text style={styles.sendButtonText}>Send</Text>
-                </>
+                <Text style={styles.submitButtonText}>Send Command</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -158,10 +158,10 @@ export function AICommandButton({ appContext, style }: AICommandButtonProps) {
       </Modal>
     </>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  fab: {
+  floatingButton: {
     position: 'absolute',
     bottom: 20,
     right: 20,
@@ -179,23 +179,22 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
-    zIndex: 1000,
   },
   modalContainer: {
     flex: 1,
     backgroundColor: 'white',
   },
-  modalHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 20,
+    paddingTop: 60,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+    borderBottomColor: '#E5E5E7',
   },
-  modalTitle: {
+  title: {
     fontSize: 20,
     fontWeight: '600',
     color: '#000',
@@ -203,57 +202,67 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  modalContent: {
+  content: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
-  instructionText: {
+  subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  commandInput: {
+  input: {
     borderWidth: 1,
-    borderColor: '#E5E5EA',
+    borderColor: '#E5E5E7',
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     minHeight: 100,
     textAlignVertical: 'top',
-    marginBottom: 24,
-  },
-  suggestionsContainer: {
-    marginBottom: 24,
+    marginBottom: 30,
   },
   suggestionsTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: '#000',
     marginBottom: 12,
+  },
+  suggestionsContainer: {
+    marginBottom: 30,
   },
   suggestionButton: {
     backgroundColor: '#F2F2F7',
-    padding: 12,
     borderRadius: 8,
+    padding: 12,
     marginBottom: 8,
   },
   suggestionText: {
     fontSize: 14,
     color: '#007AFF',
   },
-  sendButton: {
-    backgroundColor: '#007AFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
+  errorText: {
+    fontSize: 14,
+    color: '#FF3B30',
+    marginBottom: 20,
   },
-  sendButtonDisabled: {
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E7',
+  },
+  submitButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
     backgroundColor: '#C7C7CC',
   },
-  sendButtonText: {
+  submitButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
