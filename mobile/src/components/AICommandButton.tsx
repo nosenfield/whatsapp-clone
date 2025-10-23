@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { aiCommandService, AppContext } from '../services/ai-command-service';
+import { useQueryClient } from '@tanstack/react-query';
+import { AICommandService, AppContext } from '../services/ai-command-service-unified';
 import { useAuthStore } from '../store/auth-store';
 import { useRouter } from 'expo-router';
 
@@ -26,13 +27,21 @@ export function AICommandButton({ appContext, style }: AICommandButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { user } = useAuthStore();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  
+  // Create AI service instance with QueryClient
+  const aiService = useMemo(
+    () => new AICommandService(queryClient),
+    [queryClient]
+  );
 
   const handleCommand = async () => {
     if (!command.trim() || !user) return;
 
     setIsProcessing(true);
     try {
-      const response = await aiCommandService.processCommand(command.trim(), appContext);
+      // AI now uses unified commands
+      const response = await aiService.processCommand(command.trim(), appContext);
       
       if (response.success) {
         // Handle the response based on action type
