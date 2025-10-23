@@ -32,14 +32,20 @@ interface AuthState {
  * Convert Firebase User to our User type
  */
 const firebaseUserToUser = (firebaseUser: FirebaseUser): User => {
-  return {
+  const user: User = {
     id: firebaseUser.uid,
     email: firebaseUser.email!,
     displayName: firebaseUser.displayName || 'Anonymous',
-    photoURL: firebaseUser.photoURL || undefined,
     createdAt: new Date(firebaseUser.metadata.creationTime!),
     lastActive: new Date(),
   };
+
+  // Only add photoURL if it exists (Firestore doesn't allow undefined values)
+  if (firebaseUser.photoURL) {
+    user.photoURL = firebaseUser.photoURL;
+  }
+
+  return user;
 };
 
 /**
@@ -220,9 +226,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user = {
           ...userData,
           displayName: firebaseUser.displayName || userData.displayName,
-          photoURL: firebaseUser.photoURL || userData.photoURL,
           lastActive: new Date(),
         };
+
+        // Only update photoURL if it exists (Firestore doesn't allow undefined values)
+        if (firebaseUser.photoURL) {
+          user.photoURL = firebaseUser.photoURL;
+        } else if (userData.photoURL) {
+          user.photoURL = userData.photoURL;
+        }
         
         // Update user document with latest info
         await firestoreService.updateUser(firebaseUser.uid, {
@@ -236,10 +248,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: firebaseUser.uid,
           email: firebaseUser.email!,
           displayName: firebaseUser.displayName || 'Google User',
-          photoURL: firebaseUser.photoURL || undefined,
           createdAt: new Date(firebaseUser.metadata.creationTime!),
           lastActive: new Date(),
         };
+
+        // Only add photoURL if it exists (Firestore doesn't allow undefined values)
+        if (firebaseUser.photoURL) {
+          user.photoURL = firebaseUser.photoURL;
+        }
         
         await firestoreService.createUser(firebaseUser.uid, user);
       }
