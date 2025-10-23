@@ -25,6 +25,7 @@ export interface AICommandResponse {
   response: string;
   action: 'navigate_to_conversation' | 'show_summary' | 'show_error' | 'no_action';
   error?: string;
+  runId?: string; // LangSmith run ID for tracking
 }
 
 export interface CreateConversationParams {
@@ -118,13 +119,15 @@ export class AICommandService {
   }
 
   /**
-   * Process a natural language AI command
+   * Process a natural language AI command with LangSmith logging
    */
   async processCommand(
     command: string,
     appContext: AppContext
   ): Promise<AICommandResponse> {
     try {
+      console.log('🤖 Processing AI command:', command.substring(0, 50) + '...');
+      
       const request: AICommandRequest = {
         command,
         appContext,
@@ -132,7 +135,16 @@ export class AICommandService {
       };
 
       const result = await this.processAICommand(request);
-      return result.data as AICommandResponse;
+      const response = result.data as AICommandResponse;
+      
+      // Log successful command execution
+      if (response.success && response.runId) {
+        console.log('✅ AI command executed successfully. LangSmith Run ID:', response.runId);
+      } else if (!response.success) {
+        console.error('❌ AI command failed:', response.error);
+      }
+      
+      return response;
     } catch (error: any) {
       console.error('❌ AI command processing error:', error);
       return {

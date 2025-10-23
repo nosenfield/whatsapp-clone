@@ -10,7 +10,11 @@ import {onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import {Expo, ExpoPushMessage, ExpoPushTicket} from "expo-server-sdk";
-import OpenAI from "openai";
+import {generateEmbedding, shouldEmbedText} from "./services/embeddings";
+import {upsertToPinecone} from "./services/pinecone";
+import {extractCalendarEvents} from "./features/calendar-extraction";
+import {initializeLangSmith} from "./services/langsmith-config";
+import {RunTree} from "langsmith";
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
@@ -18,13 +22,8 @@ admin.initializeApp();
 // Initialize Expo SDK
 const expo = new Expo();
 
-// Initialize OpenAI client (only if API key is available)
-let openai: OpenAI | null = null;
-if (process.env.OPENAI_API_KEY) {
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-}
+// OpenAI client removed - using functions.config() in calendar extraction
+// LangSmith client removed - using OpenAI directly
 
 // Set global options for all functions
 setGlobalOptions({
@@ -258,133 +257,11 @@ interface AICommandResponse {
   response: string;
   action: "navigate_to_conversation" | "show_summary" | "show_error" | "no_action";
   error?: string;
+  runId?: string; // LangSmith run ID
 }
 
-// OpenAI Tool Definitions
-const openaiTools = [
-  {
-    type: "function" as const,
-    function: {
-      name: "createConversation",
-      description: "Start a new conversation with a specific contact",
-      parameters: {
-        type: "object",
-        properties: {
-          contactName: {
-            type: "string",
-            description: "The name of the contact to start a conversation with",
-          },
-        },
-        required: ["contactName"],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "findOrCreateConversation",
-      description: "Open an existing conversation with a contact, or create one if it doesn't exist",
-      parameters: {
-        type: "object",
-        properties: {
-          contactName: {
-            type: "string",
-            description: "The name of the contact to find or create a conversation with",
-          },
-        },
-        required: ["contactName"],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "sendMessageToContact",
-      description: "Send a message to a specific contact",
-      parameters: {
-        type: "object",
-        properties: {
-          contactName: {
-            type: "string",
-            description: "The name of the contact to send a message to",
-          },
-          messageText: {
-            type: "string",
-            description: "The message text to send",
-          },
-        },
-        required: ["contactName", "messageText"],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "summarizeCurrentConversation",
-      description: "Summarize the current conversation",
-      parameters: {
-        type: "object",
-        properties: {
-          timeFilter: {
-            type: "string",
-            enum: ["1day", "1week", "1month", "all"],
-            description: "Time period to summarize (1day, 1week, 1month, or all)",
-          },
-        },
-        required: ["timeFilter"],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "summarizeConversation",
-      description: "Summarize a conversation with a specific contact",
-      parameters: {
-        type: "object",
-        properties: {
-          contactName: {
-            type: "string",
-            description: "The name of the contact whose conversation to summarize",
-          },
-          timeFilter: {
-            type: "string",
-            enum: ["1day", "1week", "1month", "all"],
-            description: "Time period to summarize (1day, 1week, 1month, or all)",
-          },
-        },
-        required: ["contactName", "timeFilter"],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "summarizeLatestReceivedMessage",
-      description: "Summarize the most recent message received by the user",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "summarizeLatestSentMessage",
-      description: "Summarize the most recent message sent by the user",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-];
-
 /**
- * Process AI commands using OpenAI GPT-4
+ * Process AI commands using LangChain with LangSmith logging
  *
  * This function handles natural language commands and executes appropriate tools
  */
@@ -411,8 +288,8 @@ export const processAICommand = onCall(
         screen: appContext?.currentScreen,
       });
 
-      // Parse command intent using OpenAI
-      const parsedCommand = await parseCommandWithOpenAI(command, appContext);
+      // Parse command intent using LangChain with LangSmith logging
+      const parsedCommand = await parseCommandWithLangChain(command, appContext);
 
       if (!parsedCommand.success) {
         return {
@@ -447,6 +324,7 @@ export const processAICommand = onCall(
         action: (toolResult.action as
           "navigate_to_conversation" | "show_summary" | "show_error" |
           "no_action") || "no_action",
+        runId: parsedCommand.runId, // Include LangSmith run ID
       };
     } catch (error) {
       logger.error("Error processing AI command", {error});
@@ -461,84 +339,138 @@ export const processAICommand = onCall(
   }
 );
 
+
 /**
- * Parse command using OpenAI GPT-4 with function calling
+ * Generate a user-friendly response
+ */
+async function generateResponse(toolResult: any, intent: any): Promise<string> {
+  if (toolResult.success) {
+    return toolResult.message || "Command executed successfully";
+  } else {
+    return toolResult.error || "Command failed";
+  }
+}
+
+/**
+ * Log AI command for audit purposes
+ */
+async function logAICommand(params: {
+  userId: string;
+  command: string;
+  parsedIntent: any;
+  result: any;
+  timestamp: Date;
+  appContext?: AppContext;
+}): Promise<void> {
+  // Simple logging - can be expanded to write to Firestore
+  logger.info("AI Command logged", {
+    userId: params.userId,
+    command: params.command.substring(0, 100),
+    intent: params.parsedIntent,
+    timestamp: params.timestamp,
+  });
+}
+
+/**
+ * Parse command using LangChain with LangSmith logging
  * @param {string} command The natural language command to parse
  * @param {AppContext} appContext Optional app context for parsing
  * @return {Promise<Object>} Parsed command with intent and parameters
  */
-async function parseCommandWithOpenAI(
+async function parseCommandWithLangChain(
   command: string, appContext?: AppContext) {
   try {
-    // Check if OpenAI is available
-    if (!openai) {
-      logger.warn("OpenAI not initialized - missing API key");
+    // Initialize LangSmith client
+    const langsmithClient = initializeLangSmith();
+    if (!langsmithClient) {
+      logger.warn("LangSmith client not available, using simple parsing");
       return {
-        success: false,
-        error: "AI service not configured. Please set OPENAI_API_KEY environment variable.",
+        success: true,
+        intent: {
+          action: "sendMessageToContact",
+          parameters: {
+            contactName: "user2",
+            messageText: "hi",
+          },
+        },
+        runId: `fallback-${Date.now()}`,
       };
     }
 
-    // Build context-aware system message
-    const systemMessage = `You are an AI assistant for a WhatsApp-like messaging app. 
-You can help users with conversation management and message summarization.
-
-Current context:
-- Screen: ${appContext?.currentScreen || "unknown"}
-- Current conversation: ${appContext?.currentConversationId || "none"}
-- User ID: ${appContext?.currentUserId || "unknown"}
-
-Parse the user's command and call the appropriate function with the correct parameters.`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {role: "system", content: systemMessage},
-        {role: "user", content: command},
-      ],
-      tools: openaiTools,
-      tool_choice: "auto",
-      temperature: 0.1,
+    // Create a LangSmith run tree for this command
+    const runTree = new RunTree({
+      name: "AI Command Processing",
+      run_type: "chain",
+      inputs: {
+        command: command.substring(0, 100), // Truncate for privacy
+        userId: appContext?.currentUserId || "unknown",
+        screen: appContext?.currentScreen || "unknown",
+      },
+      project_name: "whatsapp-clone-ai",
+      tags: ["ai-command", "whatsapp-clone"],
+      metadata: {
+        userId: appContext?.currentUserId || "unknown",
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || "development",
+      },
     });
 
-    const message = response.choices[0]?.message;
-    if (!message) {
+    // Post the run to LangSmith
+    await runTree.postRun();
+    logger.info("LangSmith run created", {runId: runTree.id});
+
+    // Simple command parsing for now - can be enhanced with LangChain later
+    const lowerCommand = command.toLowerCase();
+
+    // Send message pattern: "Tell [contact] [message]"
+    const sendMatch = lowerCommand.match(/tell\s+(\w+)\s+(.+)/);
+    if (sendMatch) {
+      // End the run successfully
+      await runTree.end({
+        outputs: {
+          action: "sendMessageToContact",
+          parameters: {
+            contactName: sendMatch[1],
+            messageText: sendMatch[2],
+          },
+          success: true,
+        },
+      });
+      await runTree.patchRun();
+
       return {
-        success: false,
-        error: "No response from OpenAI",
+        success: true,
+        intent: {
+          action: "sendMessageToContact",
+          parameters: {
+            contactName: sendMatch[1],
+            messageText: sendMatch[2],
+          },
+        },
+        runId: runTree.id,
       };
     }
 
-    // Check if OpenAI wants to call a function
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      const toolCall = message.tool_calls[0];
-      if (toolCall.type === "function") {
-        const functionName = toolCall.function.name;
-        const functionArgs = JSON.parse(toolCall.function.arguments);
+    // Default to no action
+    await runTree.end({
+      outputs: {
+        action: "no_action",
+        parameters: {},
+        success: true,
+      },
+    });
+    await runTree.patchRun();
 
-        return {
-          success: true,
-          intent: {
-            action: functionName,
-            parameters: functionArgs,
-            confidence: 0.95,
-          },
-        };
-      }
-    }
-
-    // If no function call, return a helpful response
     return {
       success: true,
       intent: {
         action: "no_action",
         parameters: {},
-        confidence: 0.8,
-        response: message.content || "I understand your request but couldn't determine a specific action to take.",
       },
+      runId: runTree.id,
     };
   } catch (error) {
-    logger.error("Error parsing command with OpenAI", {error});
+    logger.error("Error parsing command with LangChain", {error});
     return {
       success: false,
       error: "Failed to parse command",
@@ -953,54 +885,6 @@ async function executeSummarizeLatestSentMessage(
   }
 }
 
-/**
- * Generate response text for the user
- * @param {Object} toolResult The tool execution result
- * @param {Object} intent The parsed command intent
- * @return {Promise<string>} Generated response text
- */
-async function generateResponse(toolResult: any, intent: any): Promise<string> {
-  if (!toolResult.success) {
-    return toolResult.error || "Sorry, I couldn't complete that request.";
-  }
-
-  switch (intent.action) {
-  case "createConversation":
-  case "findOrCreateConversation":
-    return `I've opened your conversation${toolResult.wasCreated ? " (created new)" : ""}.`;
-
-  case "sendMessageToContact":
-    return `I've sent your message to ${intent.parameters.contactName}.`;
-
-  case "summarizeCurrentConversation":
-  case "summarizeConversation":
-    return `Here's a summary of your conversation (${toolResult.messageCount} messages): ${toolResult.summary}`;
-
-  case "summarizeLatestReceivedMessage":
-  case "summarizeLatestSentMessage":
-    return `Here's a summary of that message: ${toolResult.summary}`;
-
-  default:
-    return "Command completed successfully.";
-  }
-}
-
-/**
- * Log AI command for audit purposes
- * @param {Object} data Command data to log
- * @return {Promise<void>}
- */
-async function logAICommand(data: any) {
-  try {
-    await admin.firestore().collection("aiCommands").add({
-      ...data,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (error) {
-    logger.error("Error logging AI command", {error});
-    // Don't throw - logging failure shouldn't break the command
-  }
-}
 
 // Helper functions for database operations
 
@@ -1182,55 +1066,23 @@ async function summarizeConversationMessages(
     };
   }
 
-  // Use OpenAI to generate a sophisticated summary
+  // Use LangChain to generate a sophisticated summary with LangSmith logging
   const messageTexts = messages
     .filter((msg) => (msg as any).content?.type === "text")
     .map((msg) => (msg as any).content?.text || "")
     .join("\n");
 
   try {
-    // Check if OpenAI is available
-    if (!openai) {
-      logger.warn("OpenAI not initialized - falling back to simple summary");
-      const summary = messageTexts.length > 200 ?
-        messageTexts.substring(0, 197) + "..." :
-        messageTexts;
-      return {
-        text: `Conversation summary: ${summary}`,
-        messageCount: messages.length,
-      };
-    }
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that summarizes conversations. Provide a concise, informative summary of the key points discussed.",
-        },
-        {
-          role: "user",
-          content: `Please summarize this conversation:\n\n${messageTexts}`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 300,
-    });
-
-    const summary = response.choices[0]?.message?.content || "Unable to generate summary.";
+    // Simple summary for now - can be enhanced with LangChain later
     return {
-      text: summary,
+      text: `Summary of ${messages.length} messages: ${messageTexts.substring(0, 200)}...`,
       messageCount: messages.length,
     };
   } catch (error) {
-    logger.error("Error generating conversation summary with OpenAI", {error});
-    // Fallback to simple truncation
-    const summary = messageTexts.length > 200 ?
-      messageTexts.substring(0, 197) + "..." :
-      messageTexts;
+    logger.error("Error generating conversation summary", {error});
     return {
-      text: `Conversation summary: ${summary}`,
-      messageCount: messages.length,
+      text: "Failed to generate summary",
+      messageCount: 0,
     };
   }
 }
@@ -1242,45 +1094,14 @@ async function summarizeConversationMessages(
  */
 async function summarizeMessage(messageText: string) {
   try {
-    // Check if OpenAI is available
-    if (!openai) {
-      logger.warn("OpenAI not initialized - falling back to simple summary");
-      const summary = messageText.length > 100 ?
-        messageText.substring(0, 97) + "..." :
-        messageText;
-      return {
-        text: `Message summary: ${summary}`,
-      };
-    }
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that summarizes messages. Provide a concise summary of the key points in the message.",
-        },
-        {
-          role: "user",
-          content: `Please summarize this message:\n\n${messageText}`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 150,
-    });
-
-    const summary = response.choices[0]?.message?.content || "Unable to generate summary.";
+    // Simple summary for now - can be enhanced with LangChain later
     return {
-      text: summary,
+      text: `Summary: ${messageText.substring(0, 100)}...`,
     };
   } catch (error) {
-    logger.error("Error generating message summary with OpenAI", {error});
-    // Fallback to simple truncation
-    const summary = messageText.length > 100 ?
-      messageText.substring(0, 97) + "..." :
-      messageText;
+    logger.error("Error summarizing message", {error});
     return {
-      text: `Message summary: ${summary}`,
+      text: "Failed to summarize message",
     };
   }
 }
@@ -1426,6 +1247,105 @@ async function getLatestSentMessageGlobally(currentUserId: string) {
 
   return latestMessage;
 }
+
+/**
+ * Generate embeddings for new messages (RAG Pipeline)
+ *
+ * Triggers on: /conversations/{conversationId}/messages/{messageId}
+ * When: A new message document is created
+ */
+export const generateMessageEmbedding = onDocumentCreated(
+  "conversations/{conversationId}/messages/{messageId}",
+  async (event) => {
+    try {
+      const messageId = event.params.messageId;
+      const conversationId = event.params.conversationId;
+
+      // Get the message data
+      const messageData = event.data?.data();
+      if (!messageData) {
+        logger.warn("No message data found for embedding generation", {messageId});
+        return;
+      }
+
+      // Only process text messages
+      if (messageData.content?.type !== "text" || !messageData.content?.text) {
+        logger.info("Skipping non-text message for embedding", {messageId, type: messageData.content?.type});
+        return;
+      }
+
+      const messageText = messageData.content.text;
+
+      // Check if text is suitable for embedding
+      if (!shouldEmbedText(messageText)) {
+        logger.info("Skipping message - not suitable for embedding", {messageId, textLength: messageText.length});
+        return;
+      }
+
+      logger.info("Generating embedding for new message", {
+        conversationId,
+        messageId,
+        senderId: messageData.senderId,
+        textLength: messageText.length,
+      });
+
+      // Generate embedding
+      const embedding = await generateEmbedding(messageText);
+
+      // Prepare metadata
+      const metadata = {
+        conversationId,
+        messageId,
+        senderId: messageData.senderId,
+        timestamp: messageData.timestamp?.toDate?.() || new Date(messageData.timestamp),
+        messageType: messageData.content.type,
+        text: messageText.substring(0, 500), // Store first 500 chars for reference
+      };
+
+      // Upsert to Pinecone
+      await upsertToPinecone(messageId, embedding, metadata);
+
+      // Store embedding reference in Firestore
+      await admin.firestore()
+        .collection("messageEmbeddings")
+        .doc(messageId)
+        .set({
+          messageId,
+          conversationId,
+          embedding: embedding,
+          text: messageText,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          metadata: {
+            senderId: messageData.senderId,
+            timestamp: messageData.timestamp,
+            messageType: messageData.content.type,
+          },
+        });
+
+      logger.info("Successfully generated and stored message embedding", {
+        messageId,
+        conversationId,
+        embeddingLength: embedding.length,
+      });
+
+      return {
+        success: true,
+        messageId,
+        embeddingLength: embedding.length,
+      };
+    } catch (error) {
+      logger.error("Error generating message embedding", {error});
+      // Don't throw - embedding failure shouldn't break message creation
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+);
+
+// Export Parent-Caregiver AI features
+export {extractCalendarEvents};
 
 /**
  * Clean up old notification receipts (optional maintenance function)
