@@ -130,12 +130,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Convert to our User type
       const user = firebaseUserToUser(firebaseUser);
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for new user');
@@ -183,12 +179,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         lastActive: new Date(),
       });
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for signed-in user');
@@ -252,12 +244,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await firestoreService.createUser(firebaseUser.uid, user);
       }
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for Google signed-in user');
@@ -295,12 +283,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       await firebaseAuth.signOut();
 
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to clear AsyncStorage and update state
+      get().setUser(null);
 
       console.log('✅ User signed out successfully');
     } catch (error: any) {
