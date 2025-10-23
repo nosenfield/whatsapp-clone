@@ -27,9 +27,9 @@ Last Updated: October 22, 2025
 - [x] Node.js 20+ installed (`node --version`)
 - [x] npm or yarn installed
 - [x] Git installed and configured
-- [ ] Apple Developer account ($99/year) - required for TestFlight
 - [x] Firebase account created (free tier)
-- [ ] Anthropic/OpenAI account created (for future AI phase)
+- [ ] Anthropic/OpenAI account created (for AI phase)
+- [x] Physical iOS device for on-device testing (Expo Go)
 
 ### Environment Setup
 - [x] Install Expo CLI globally: `npm install -g expo-cli eas-cli`
@@ -795,7 +795,7 @@ Last Updated: October 22, 2025
 
 ## Phase 6: Polish & Testing
 
-**Goal**: Refine UX, handle edge cases, prepare for TestFlight
+**Goal**: Refine UX, add essential features, optimize performance for production use
 
 ### UI/UX Polish
 
@@ -966,9 +966,11 @@ Last Updated: October 22, 2025
 
 ---
 
-## Phase 7: AI Integration (Post-MVP)
+## Phase 7: AI Integration (Generic Features)
 
-**Goal**: Add AI assistance layer on top of core messaging
+**Goal**: Add AI assistance features for all users (incremental implementation)
+
+**Note:** For specialized parent-caregiver AI features, see `task-list-appendix-b.md`
 
 ### AI Infrastructure Setup
 - [ ] Set up Anthropic/OpenAI API keys in Firebase Functions
@@ -977,7 +979,7 @@ Last Updated: October 22, 2025
 - [ ] Create Firestore collection: `/actionQueue`
 - [ ] Create Firestore collection: `/conversationContext`
 - [ ] Install Vercel AI SDK in Cloud Functions
-- [ ] Configure AI model (Claude 3.5 Sonnet recommended)
+- [ ] Configure AI model (OpenAI GPT-4 recommended)
 
 ### Conversation History Embeddings (RAG Pipeline)
 - [ ] Create Cloud Function: `generateEmbeddings`
@@ -1003,7 +1005,7 @@ Last Updated: October 22, 2025
   - [ ] Create action in `/actionQueue`
   - [ ] Cloud Function processes
   - [ ] Retrieve relevant conversation history (RAG)
-  - [ ] Construct prompt for Claude
+  - [ ] Construct prompt for OpenAI
   - [ ] Stream response back to user
   - [ ] Display in chat with typing indicator
 - [ ] Add context menu to messages:
@@ -1155,77 +1157,38 @@ Last Updated: October 22, 2025
 
 ---
 
-## Deployment Checklist
+## On-Device Testing & Deployment Checklist
 
-### Pre-Deployment
-- [ ] Review all Firebase security rules (production-ready)
-- [ ] Review all environment variables (no hardcoded secrets)
+### Pre-Testing
+- [x] Review all Firebase security rules (production-ready)
+- [x] Review all environment variables (no hardcoded secrets)
 - [ ] Update app version in `app.json`
-- [ ] Update privacy policy and terms of service (if applicable)
-- [ ] Test on multiple iOS devices and versions
-- [ ] Fix all critical bugs from testing
-- [ ] Ensure push notifications work on physical device
-- [ ] Prepare app screenshots for TestFlight (optional)
+- [x] Test on physical iOS device via Expo Go
+- [x] Fix all critical bugs from testing
+- [x] Ensure push notifications work on physical device
 
-### EAS Build Configuration
-- [ ] Configure `eas.json`:
-  ```json
-  {
-    "build": {
-      "development": {
-        "developmentClient": true,
-        "distribution": "internal"
-      },
-      "preview": {
-        "distribution": "internal",
-        "ios": {
-          "simulator": false
-        }
-      },
-      "production": {
-        "distribution": "store",
-        "ios": {
-          "simulator": false
-        }
-      }
-    }
-  }
-  ```
-- [ ] Set up iOS credentials: `eas credentials`
-- [ ] Configure iOS bundle identifier (must match Firebase)
-- [ ] Configure app icon and splash screen in `app.json`
+### Expo Go Testing
+- [x] Install Expo Go app on iOS device
+- [x] Connect to same network as development machine
+- [x] Run `npx expo start`
+- [x] Scan QR code with Expo Go app
+- [x] Test all core features on device
+- [x] Test push notifications (requires physical device)
+- [ ] Test on multiple iOS devices and versions (if available)
 
-### Build for TestFlight
-- [ ] Build iOS app: `eas build --platform ios --profile preview`
-- [ ] Wait for build to complete (15-30 minutes)
-- [ ] Download IPA or get build URL
-- [ ] Submit to TestFlight: `eas submit --platform ios`
-- [ ] Wait for Apple review (1-2 days typically)
-
-### TestFlight Setup
-- [ ] Log in to App Store Connect
-- [ ] Navigate to TestFlight section
-- [ ] Add internal testers (up to 100)
-- [ ] Set up external testing groups (optional, requires Apple review)
-- [ ] Add tester emails
-- [ ] Send invitations
-- [ ] Provide testing instructions in TestFlight notes
-
-### Post-Deployment Monitoring
+### Production Monitoring
 - [ ] Monitor Firebase Console for errors
 - [ ] Monitor Firestore usage (reads/writes)
 - [ ] Monitor Cloud Functions logs
 - [ ] Monitor Firebase Storage usage
 - [ ] Track push notification delivery rates
 - [ ] Collect crash reports (if any)
-- [ ] Gather user feedback from TestFlight
 - [ ] Create GitHub issues for reported bugs
 
 ### Iteration & Updates
-- [ ] Fix critical bugs reported by testers
-- [ ] Build new version: Update version in `app.json`, run `eas build`
-- [ ] Submit update to TestFlight
-- [ ] Notify testers of updates
+- [ ] Fix critical bugs discovered in testing
+- [ ] Update version in `app.json`
+- [ ] Re-test on device via Expo Go
 - [ ] Repeat until stable
 
 ---
@@ -1239,10 +1202,10 @@ Last Updated: October 22, 2025
 | M3: One-on-One Chat | Two users can message in real-time | ✅ Complete | Week 4 | Week 2 |
 | M4: Presence & Typing | Online indicators and typing working | ✅ Complete | Week 5 | Week 2 |
 | M5: Groups & Media | Group chats and image sharing | ✅ Complete | Week 7 | Week 2 |
-| M6: Push Notifications | Notifications working on device | 🎯 In Progress | Week 8 | - |
-| M7: TestFlight Alpha | App deployed to 5-100 testers | 🔜 Not Started | Week 10 | - |
-| M8: MVP Complete | All core features stable and tested | 🔜 Not Started | Week 10 | - |
-| M9: AI Integration | AI assistant and features live | 🔮 Future | Post-MVP | - |
+| M6: Push Notifications | Notifications working on device | ✅ Complete | Week 8 | Week 2 |
+| M7: Polish & Testing | Quick polish phase complete | 🎯 In Progress | Week 3 | - |
+| M8: MVP Complete | All core features stable and tested | 🔜 Not Started | Week 3 | - |
+| M9: AI Integration | Generic AI features implemented | 🎯 Next | Week 4-8 | - |
 
 ---
 
@@ -1315,5 +1278,5 @@ Last Updated: October 22, 2025
 ---
 
 **Last Updated**: October 22, 2025  
-**Status**: Phase 4 Complete, Phase 5 In Progress  
-**Version**: 1.2
+**Status**: Phase 6 In Progress - Quick Polish  
+**Version**: 2.0 - Updated for on-device testing (removed TestFlight)

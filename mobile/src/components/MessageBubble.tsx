@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, ActionSheetIOS, Alert, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Message, Conversation } from '../types';
 import { useState } from 'react';
@@ -50,6 +51,31 @@ export function MessageBubble({
     return senderDetails?.displayName || 'Unknown';
   };
 
+  const handleLongPress = () => {
+    const messageText = message.content.text;
+    if (!messageText) return; // No text to copy (image only)
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Copy'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await Clipboard.setStringAsync(messageText);
+            Alert.alert('Copied', 'Message copied to clipboard');
+          }
+        }
+      );
+    } else {
+      // For Android or web, just copy directly
+      Clipboard.setStringAsync(messageText).then(() => {
+        Alert.alert('Copied', 'Message copied to clipboard');
+      });
+    }
+  };
+
   const isImageMessage = message.content.type === 'image' && message.content.mediaUrl;
 
   return (
@@ -62,7 +88,9 @@ export function MessageBubble({
       {showSender && !isOwnMessage && getSenderName() && (
         <Text style={styles.senderName}>{getSenderName()}</Text>
       )}
-      <View
+      <TouchableOpacity
+        activeOpacity={0.95}
+        onLongPress={handleLongPress}
         style={[
           styles.bubble,
           isOwnMessage ? styles.ownMessageBubble : styles.otherMessageBubble,
@@ -136,7 +164,7 @@ export function MessageBubble({
           </Text>
           {getStatusIcon()}
         </View>
-      </View>
+      </TouchableOpacity>
     </View>
   );
 }

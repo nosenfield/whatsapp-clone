@@ -199,7 +199,8 @@ export const updateMessage = async (
  */
 export const getConversationMessages = async (
   conversationId: string,
-  limit: number = 50
+  limit: number = 50,
+  offset: number = 0
 ): Promise<Message[]> => {
   const database = getDb();
   
@@ -207,11 +208,28 @@ export const getConversationMessages = async (
     `SELECT * FROM messages 
      WHERE conversationId = ? AND deletedAt IS NULL
      ORDER BY timestamp DESC 
-     LIMIT ?`,
-    [conversationId, limit]
+     LIMIT ? OFFSET ?`,
+    [conversationId, limit, offset]
   );
 
   return rows.map(rowToMessage);
+};
+
+/**
+ * Get total message count for a conversation
+ */
+export const getConversationMessageCount = async (
+  conversationId: string
+): Promise<number> => {
+  const database = getDb();
+  
+  const result = await database.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM messages 
+     WHERE conversationId = ? AND deletedAt IS NULL`,
+    [conversationId]
+  );
+
+  return result?.count || 0;
 };
 
 /**

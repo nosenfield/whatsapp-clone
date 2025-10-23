@@ -16,6 +16,8 @@ import { useAuthStore } from '../../src/store/auth-store';
 import { useConversations } from '../../src/hooks/useConversations';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { ConversationItem } from '../../src/components/ConversationItem';
+import { AICommandButton } from '../../src/components/AICommandButton';
+import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Conversation } from '../../src/types';
 
 export default function ChatsScreen() {
@@ -23,6 +25,7 @@ export default function ChatsScreen() {
   const { data: conversations, isLoading, refetch, isRefetching, isFetching } = useConversations(
     currentUser?.id
   );
+  const aiContext = useAICommandContext();
 
   // Refetch when screen comes into focus
   useFocusEffect(
@@ -115,7 +118,7 @@ export default function ChatsScreen() {
         </View>
       )}
 
-      {/* Floating Action Button */}
+      {/* Floating Action Buttons */}
       <TouchableOpacity
         style={styles.fab}
         onPress={handleNewChat}
@@ -123,6 +126,12 @@ export default function ChatsScreen() {
       >
         <MaterialIcons name="add" size={24} color="#fff" />
       </TouchableOpacity>
+      
+      {/* AI Command Button */}
+      <AICommandButton 
+        appContext={aiContext}
+        style={styles.aiFab}
+      />
     </View>
   );
 }
@@ -173,6 +182,25 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  aiFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 88, // Position to the left of the main FAB
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#34C759', // Green color for AI
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',

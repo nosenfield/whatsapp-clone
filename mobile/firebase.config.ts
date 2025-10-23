@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
 import Constants from 'expo-constants';
 
 // Read Firebase config from environment variables
@@ -40,7 +41,7 @@ for (const key of requiredConfigKeys) {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 
-// Initialize services
+// Initialize Auth (will use default persistence)
 export const auth = getAuth(app);
 
 // Initialize Firestore with offline persistence
@@ -51,6 +52,7 @@ export const firestore = initializeFirestore(app, {
 
 export const realtimeDb = getDatabase(app);
 export const storage = getStorage(app);
+export const functions = getFunctions(app);
 
 // Log config status in development (without exposing sensitive values)
 if (__DEV__) {

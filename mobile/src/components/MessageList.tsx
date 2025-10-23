@@ -1,4 +1,4 @@
-import { FlatList, StyleSheet, View, Text } from 'react-native';
+import { FlatList, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MessageBubble } from './MessageBubble';
 import { Message, Conversation } from '../types';
@@ -8,6 +8,9 @@ interface MessageListProps {
   currentUserId: string;
   isLoading?: boolean;
   conversation?: Conversation | null;
+  hasNextPage?: boolean;
+  fetchNextPage?: () => void;
+  isFetchingNextPage?: boolean;
 }
 
 export function MessageList({
@@ -15,8 +18,31 @@ export function MessageList({
   currentUserId,
   isLoading = false,
   conversation,
+  hasNextPage = false,
+  fetchNextPage,
+  isFetchingNextPage = false,
 }: MessageListProps) {
   const isGroup = conversation?.type === 'group';
+
+  const renderLoadMoreButton = () => {
+    if (!hasNextPage) return null;
+
+    return (
+      <View style={styles.loadMoreContainer}>
+        {isFetchingNextPage ? (
+          <ActivityIndicator size="small" color="#007AFF" />
+        ) : (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={fetchNextPage}
+          >
+            <MaterialIcons name="expand-more" size={20} color="#007AFF" />
+            <Text style={styles.loadMoreText}>Load more messages</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -53,6 +79,7 @@ export function MessageList({
       inverted
       contentContainerStyle={styles.listContent}
       style={styles.list}
+      ListFooterComponent={renderLoadMoreButton()}
     />
   );
 }
@@ -87,6 +114,25 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: '#8E8E93',
+  },
+  loadMoreContainer: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 20,
+    gap: 4,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
 

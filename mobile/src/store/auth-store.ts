@@ -4,6 +4,7 @@ import * as firebaseAuth from '../services/firebase-auth';
 import * as firestoreService from '../services/firebase-firestore';
 import { initializePresence, setPresence } from '../services/firebase-rtdb';
 import { registerForPushNotifications } from '../services/notifications';
+import { getAuthErrorMessage, getFirestoreErrorMessage } from '../utils/error-messages';
 import { User as FirebaseUser } from 'firebase/auth';
 
 interface AuthState {
@@ -19,6 +20,7 @@ interface AuthState {
   setError: (error: string | null) => void;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   initializeAuth: () => void;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -109,8 +111,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed up successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign up error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign up',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -161,8 +164,78 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed in successfully:', user.email);
     } catch (error: any) {
       console.error('❌ Sign in error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign in',
+        error: errorMessage,
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * Sign in with Google
+   */
+  signInWithGoogle: async () => {
+    try {
+      set({ isLoading: true, error: null });
+
+      // Sign in with Google
+      const firebaseUser = await firebaseAuth.signInWithGoogle();
+
+      // Check if user document exists in Firestore
+      const userData = await firestoreService.getUser(firebaseUser.uid);
+
+      let user: User;
+      if (userData) {
+        // Update existing user with latest Google info
+        user = {
+          ...userData,
+          displayName: firebaseUser.displayName || userData.displayName,
+          photoURL: firebaseUser.photoURL || userData.photoURL,
+          lastActive: new Date(),
+        };
+        
+        // Update user document with latest info
+        await firestoreService.updateUser(firebaseUser.uid, {
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          lastActive: user.lastActive,
+        });
+      } else {
+        // Create new user document for Google user
+        user = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email!,
+          displayName: firebaseUser.displayName || 'Google User',
+          photoURL: firebaseUser.photoURL || undefined,
+          createdAt: new Date(firebaseUser.metadata.creationTime!),
+          lastActive: new Date(),
+        };
+        
+        await firestoreService.createUser(firebaseUser.uid, user);
+      }
+
+      set({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+
+      // Initialize presence system
+      console.log('🟢 Initializing presence for Google signed-in user');
+      await initializePresence(firebaseUser.uid);
+
+      // Register push notification token
+      await get().registerPushToken(firebaseUser.uid);
+
+      console.log('✅ User signed in with Google successfully:', user.email);
+    } catch (error: any) {
+      console.error('❌ Google Sign-In error:', error);
+      const errorMessage = getAuthErrorMessage(error);
+      set({
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -196,8 +269,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ User signed out successfully');
     } catch (error: any) {
       console.error('❌ Sign out error:', error);
+      const errorMessage = getAuthErrorMessage(error);
       set({
-        error: error.message || 'Failed to sign out',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;
@@ -208,8 +282,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    * Initialize auth listener
    * Should be called once when app starts
    */
-  initializeAuth: () => {
+  initializeAuth: async () => {
     set({ isLoading: true });
+
+    // Configure Google Sign-In
+    try {
+      await firebaseAuth.configureGoogleSignIn();
+    } catch (error) {
+      console.warn('⚠️ Google Sign-In configuration failed:', error);
+      // Don't throw - app should still work without Google Sign-In
+    }
 
     // Listen to auth state changes
     const unsubscribe = firebaseAuth.onAuthStateChanged(async (firebaseUser) => {
@@ -244,11 +326,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           console.log('✅ Auth state restored:', user.email);
         } catch (error: any) {
           console.error('❌ Error loading user data:', error);
+          const errorMessage = getFirestoreErrorMessage(error);
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
-            error: error.message,
+            error: errorMessage,
           });
         }
       } else {
@@ -293,8 +376,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('✅ Profile updated successfully');
     } catch (error: any) {
       console.error('❌ Update profile error:', error);
+      const errorMessage = getFirestoreErrorMessage(error);
       set({
-        error: error.message || 'Failed to update profile',
+        error: errorMessage,
         isLoading: false,
       });
       throw error;

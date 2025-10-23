@@ -7,11 +7,14 @@ import { useMessageStore } from '../../src/store/message-store';
 import { MessageInput } from '../../src/components/MessageInput';
 import { MessageList } from '../../src/components/MessageList';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
+import { AICommandButton } from '../../src/components/AICommandButton';
+import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Message, Conversation } from '../../src/types';
 import { getConversationById } from '../../src/services/conversation-service';
 import { subscribeToMessages } from '../../src/services/firebase-firestore';
 import {
   getConversationMessages,
+  getConversationMessageCount,
   insertMessage,
   updateMessage,
   upsertConversation,
@@ -30,11 +33,15 @@ export default function ConversationScreen() {
   const queryClient = useQueryClient();
   const { optimisticMessages, addOptimisticMessage, removeOptimisticMessage } =
     useMessageStore();
+  const aiContext = useAICommandContext();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentOffset, setCurrentOffset] = useState(50); // Start after first 50
 
   // Determine if this is a group conversation
   const isGroup = conversation?.type === 'group';
@@ -97,10 +104,14 @@ export default function ConversationScreen() {
         // 1.5. Store conversation in SQLite (required for foreign key constraint)
         await upsertConversation(conv);
 
-        // 2. Load messages from SQLite (instant display)
-        const localMessages = await getConversationMessages(id);
+        // 2. Load messages from SQLite (instant display, limit 50)
+        const localMessages = await getConversationMessages(id, 50, 0);
         if (!isMounted) return;
         setMessages(localMessages);
+        
+        // Check if there are more messages
+        const totalCount = await getConversationMessageCount(id);
+        setHasMoreMessages(totalCount > 50);
         setIsLoading(false);
 
         // 3. Subscribe to Firestore for real-time updates
@@ -349,6 +360,26 @@ export default function ConversationScreen() {
     }
   };
 
+  // Load more messages (older messages)
+  const handleLoadMore = async () => {
+    if (!id || isLoadingMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const olderMessages = await getConversationMessages(id, 50, currentOffset);
+      setMessages((prev) => [...prev, ...olderMessages]);
+      setCurrentOffset((prev) => prev + 50);
+      
+      // Check if there are even more messages
+      const totalCount = await getConversationMessageCount(id);
+      setHasMoreMessages(totalCount > currentOffset + 50);
+    } catch (error) {
+      console.error('Failed to load more messages:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   // Combine stored messages with optimistic messages
   const allMessages = [
     ...messages,
@@ -394,6 +425,9 @@ export default function ConversationScreen() {
           currentUserId={currentUser?.id || ''}
           isLoading={false}
           conversation={conversation}
+          hasNextPage={hasMoreMessages}
+          fetchNextPage={handleLoadMore}
+          isFetchingNextPage={isLoadingMore}
         />
         {typingText && (
           <View style={styles.typingIndicatorContainer}>
@@ -406,6 +440,12 @@ export default function ConversationScreen() {
           onSend={handleSendMessage}
           onSendImage={handleSendImage}
           disabled={isSending}
+        />
+        
+        {/* AI Command Button */}
+        <AICommandButton 
+          appContext={aiContext}
+          style={styles.aiFab}
         />
       </View>
     </>
@@ -442,6 +482,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
     fontStyle: 'italic',
+  },
+  aiFab: {
+    position: 'absolute',
+    bottom: 100, // Position above the message input
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#34C759', // Green color for AI
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
 

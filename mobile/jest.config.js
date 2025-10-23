@@ -26,6 +26,7 @@ module.exports = {
       // Only run service and integration tests
       testMatch: [
         '<rootDir>/__tests__/unit/services/**/*.test.{ts,tsx}',
+        '<rootDir>/__tests__/unit/commands/**/*.test.{ts,tsx}',
         '<rootDir>/__tests__/integration/**/*.test.{ts,tsx}',
       ],
       
@@ -58,9 +59,10 @@ module.exports = {
         '^@utils/(.*)$': '<rootDir>/src/utils/$1',
       },
       
-      // Coverage for services only
+      // Coverage for services and commands
       collectCoverageFrom: [
         'src/services/**/*.{ts,tsx}',
+        'src/commands/**/*.{ts,tsx}',
         'src/store/**/*.{ts,tsx}',
         '!src/**/*.d.ts',
         '!**/__tests__/**',

@@ -13,6 +13,58 @@ When working with this project:
 
 ---
 
+## Core Messaging Terms (AI-Optimized)
+
+### Primary Entities
+
+**Contact**
+- A user who has an account in our system and can be messaged
+- Identified by: user ID, display name, email
+- Usage: "Find the contact named John" or "Start conversation with contact"
+- AI Context: Use this term when referring to users who can receive messages
+
+**Conversation**
+- A persistent messaging channel between 2 or more users
+- Contains: conversation ID, participants, metadata, message history
+- Usage: "Open conversation with John" or "Summarize this conversation"
+- AI Context: The main entity for organizing messages between users
+
+**Group Conversation**
+- A conversation involving 3 or more users
+- Contains: group name, member list, admin settings
+- Usage: "Create group conversation" or "Add member to group"
+- AI Context: Distinguish from direct conversations (2 users only)
+
+**Message**
+- A single communication unit sent from one user to a conversation
+- Contains: message ID, sender ID, content, timestamp, status
+- Usage: "Send message" or "Summarize recent message"
+- AI Context: The atomic unit of communication
+
+**Thread**
+- Synonym for "Conversation" - one or more messages between users
+- Usage: "Message thread" or "Conversation thread"
+- AI Context: Interchangeable with "Conversation" - use consistently
+
+### AI Command Context
+
+**Current Conversation**
+- The conversation currently being viewed by the user
+- Context: When user is in a conversation screen
+- Usage: "Summarize this conversation" (refers to current conversation)
+
+**Recent Messages**
+- Messages from a specified time period (1 day, 1 week, 1 month, all history)
+- Context: Used in summarization commands
+- Usage: "Summarize recent conversation with John (1 week)"
+
+**Named Contact**
+- A contact identified by display name in AI commands
+- Context: "Tell John I'm on my way" - John is the named contact
+- Usage: Resolve display name to user ID for operations
+
+---
+
 ## UX/UI Terminology
 
 ### Layout & Structure
@@ -165,6 +217,7 @@ When working with this project:
 | Date | Change | Reason |
 |------|--------|--------|
 | 2025-10-20 | Initial glossary created | Standardize UX/UI terminology |
+| 2025-10-22 | Added AI-optimized messaging terms | Support AI command processing |
 
 ---
 
