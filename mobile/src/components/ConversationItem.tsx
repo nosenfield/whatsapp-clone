@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Conversation } from '../types';
 import { usePresence } from '../hooks/usePresence';
+import { useTypingIndicators, formatTypingIndicator } from '../hooks/useTypingIndicators';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -33,11 +34,29 @@ export const ConversationItem = ({
     ? conversation.participants.find((p) => p !== currentUserId)
     : undefined;
 
+  // Get other participant's photo URL (for direct chats)
+  const otherParticipantPhotoURL = !isGroup && otherParticipantId
+    ? conversation.participantDetails[otherParticipantId]?.photoURL
+    : undefined;
+
   // Subscribe to other participant's presence (only for direct chats)
   const presence = usePresence(otherParticipantId);
 
+  // Subscribe to typing indicators for this conversation
+  const typingUserIds = useTypingIndicators(conversation.id, currentUserId);
+
+  // Format typing indicator text
+  const typingText = typingUserIds.length > 0
+    ? formatTypingIndicator(typingUserIds, conversation.participantDetails)
+    : null;
+
   // Format last message preview based on message type
   const getLastMessagePreview = () => {
+    // If someone is typing, show typing indicator instead of last message
+    if (typingText) {
+      return typingText;
+    }
+
     if (!conversation.lastMessage) {
       return 'No messages yet';
     }
@@ -97,11 +116,24 @@ export const ConversationItem = ({
     >
       <View style={styles.avatarContainer}>
         <View style={[styles.avatar, isGroup && styles.groupAvatar]}>
-          <MaterialIcons
-            name={isGroup ? 'group' : 'person'}
-            size={isGroup ? 26 : 28}
-            color="#fff"
-          />
+          {isGroup ? (
+            <MaterialIcons
+              name="group"
+              size={26}
+              color="#fff"
+            />
+          ) : otherParticipantPhotoURL ? (
+            <Image
+              source={{ uri: otherParticipantPhotoURL }}
+              style={styles.profileImage}
+            />
+          ) : (
+            <MaterialIcons
+              name="person"
+              size={28}
+              color="#fff"
+            />
+          )}
         </View>
         {/* Online indicator - green dot if user is online (only for direct chats) */}
         {!isGroup && presence.online && <View style={styles.onlineIndicator} />}
@@ -113,7 +145,10 @@ export const ConversationItem = ({
           </Text>
           <Text style={styles.timestamp}>{formatTimestamp(timestamp)}</Text>
         </View>
-        <Text style={styles.lastMessage} numberOfLines={2}>
+        <Text style={[
+          styles.lastMessage,
+          typingText && styles.typingMessage
+        ]} numberOfLines={2}>
           {lastMessageText}
         </Text>
       </View>
@@ -140,6 +175,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   groupAvatar: {
     backgroundColor: '#34C759', // Green for groups
@@ -180,6 +221,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#8E8E93',
     lineHeight: 20,
+  },
+  typingMessage: {
+    color: '#007AFF',
+    fontStyle: 'italic',
   },
 });
 

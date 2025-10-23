@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Switch, Image } from 'react-native';
 import { useState, useEffect } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -92,7 +92,11 @@ export default function ProfileScreen() {
       {/* Profile Header */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          <MaterialIcons name="person" size={48} color="#fff" />
+          {user.photoURL ? (
+            <Image source={{ uri: user.photoURL }} style={styles.profileImage} />
+          ) : (
+            <MaterialIcons name="person" size={48} color="#fff" />
+          )}
         </View>
         <Text style={styles.name}>{user.displayName}</Text>
         <Text style={styles.email}>{user.email}</Text>
@@ -100,7 +104,7 @@ export default function ProfileScreen() {
 
       {/* Profile Options */}
       <View style={styles.section}>
-        <TouchableOpacity style={styles.option} onPress={() => {}}>
+        <TouchableOpacity style={styles.option} onPress={() => router.push('/edit-profile')}>
           <View style={styles.optionLeft}>
             <MaterialIcons name="edit" size={24} color="#007AFF" />
             <Text style={styles.optionText}>Edit Profile</Text>
@@ -173,6 +177,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   name: {
     fontSize: 24,

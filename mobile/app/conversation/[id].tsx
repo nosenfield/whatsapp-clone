@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, Alert } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Alert, Image } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../src/store/auth-store';
@@ -61,6 +61,11 @@ export default function ConversationScreen() {
   // Get other participant ID (for presence in direct chats)
   const otherParticipantId = !isGroup
     ? conversation?.participants.find((p) => p !== currentUser?.id)
+    : undefined;
+
+  // Get other participant's photo URL (for direct chats)
+  const otherParticipantPhotoURL = !isGroup && otherParticipantId
+    ? conversation?.participantDetails[otherParticipantId]?.photoURL
     : undefined;
 
   // Subscribe to other participant's presence (only for direct chats)
@@ -411,9 +416,17 @@ export default function ConversationScreen() {
           headerTitleAlign: 'left',
           headerBackTitle: 'Chats',
           headerTitle: () => (
-            <View>
-              <Text style={styles.headerTitle}>{conversationName}</Text>
-              <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+            <View style={styles.headerContainer}>
+              {!isGroup && otherParticipantPhotoURL && (
+                <Image
+                  source={{ uri: otherParticipantPhotoURL }}
+                  style={styles.headerPhoto}
+                />
+              )}
+              <View style={styles.headerTextContainer}>
+                <Text style={styles.headerTitle}>{conversationName}</Text>
+                <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+              </View>
             </View>
           ),
         }}
@@ -462,6 +475,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerPhoto: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 17,
