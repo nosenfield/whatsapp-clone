@@ -8,7 +8,9 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test:langsmith": "ts-node test-langsmith.ts",
+    "test:simple": "ts-node simple-test.ts"
   },
   "engines": {
     "node": "20"
@@ -16,10 +18,15 @@
   "main": "lib/index.js",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
+    "@langchain/core": "^1.0.1",
+    "@langchain/openai": "^1.0.0",
+    "@pinecone-database/pinecone": "^6.1.2",
     "expo-server-sdk": "^4.0.0",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1",
-    "openai": "^6.6.0"
+    "langsmith": "^0.3.74",
+    "openai": "^6.6.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^5.12.0",
@@ -28,6 +35,7 @@
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-import": "^2.25.4",
     "firebase-functions-test": "^3.1.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   },
   "private": true

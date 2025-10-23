@@ -101,3 +101,140 @@ export interface TypingIndicator {
   isTyping: boolean;
   timestamp: Date;
 }
+
+// Parent-Caregiver AI Types
+export interface ExtractedEvent {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  title: string;
+  date: Date;
+  time?: string;
+  location?: string;
+  participants: string[];
+  status: 'proposed' | 'confirmed' | 'cancelled';
+  extractedAt: Date;
+  extractedBy: string; // AI system
+  googleCalendarEventId?: string;
+  deviceCalendarEventId?: string;
+}
+
+export interface Decision {
+  id: string;
+  conversationId: string;
+  summary: string;
+  outcome: string;
+  participants: string[];
+  actionItems: ActionItem[];
+  decisionDate: Date;
+  extractedAt: Date;
+  status: 'active' | 'completed' | 'cancelled';
+  relatedEventId?: string;
+}
+
+export interface ActionItem {
+  id: string;
+  description: string;
+  assignedTo: string;
+  dueDate?: Date;
+  completed: boolean;
+  completedAt?: Date;
+}
+
+export interface PriorityMessage {
+  messageId: string;
+  conversationId: string;
+  priority: 'urgent' | 'high' | 'normal';
+  reason: string;
+  confidence: number; // 0-1
+  analyzedAt: Date;
+}
+
+export interface RSVPTracker {
+  id: string;
+  conversationId: string;
+  eventId: string;
+  eventTitle: string;
+  eventDate: Date;
+  invitees: RSVPResponse[];
+  organizerId: string;
+  createdAt: Date;
+  status: 'active' | 'closed';
+}
+
+export interface RSVPResponse {
+  userId: string;
+  response: 'yes' | 'no' | 'maybe' | 'pending';
+  respondedAt?: Date;
+  message?: string;
+}
+
+export interface Deadline {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  taskDescription: string;
+  deadline: Date;
+  assignedTo: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'completed' | 'overdue';
+  reminders: Reminder[];
+  extractedAt: Date;
+}
+
+export interface Reminder {
+  id: string;
+  deadlineId: string;
+  reminderTime: Date;
+  status: 'pending' | 'sent' | 'snoozed';
+  sentAt?: Date;
+  snoozedUntil?: Date;
+}
+
+export interface SchedulingConflict {
+  id: string;
+  userId: string;
+  conflictingEvents: string[]; // Array of event IDs
+  conflictType: 'time_overlap' | 'location_conflict' | 'resource_conflict';
+  severity: 'low' | 'medium' | 'high';
+  detectedAt: Date;
+  suggestedSolutions: ConflictSolution[];
+  status: 'active' | 'resolved' | 'dismissed';
+}
+
+export interface ConflictSolution {
+  id: string;
+  description: string;
+  difficulty: 'easy' | 'moderate' | 'hard';
+  automated: boolean;
+  actions: string[];
+}
+
+export interface MessageEmbedding {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  embedding: number[];
+  text: string;
+  createdAt: Date;
+  metadata: {
+    senderId: string;
+    timestamp: Date;
+    messageType: string;
+  };
+}
+
+// AI Feature Flags
+export interface UserFeatureFlags {
+  userId: string;
+  features: {
+    calendarExtraction: boolean;
+    decisionSummarization: boolean;
+    priorityHighlighting: boolean;
+    rsvpTracking: boolean;
+    deadlineReminders: boolean;
+    proactiveAssistant: boolean;
+    ragPipeline: boolean;
+  };
+  updatedAt: Date;
+}
