@@ -6,6 +6,7 @@ import { initializePresence, setPresence } from '../services/firebase-rtdb';
 import { registerForPushNotifications } from '../services/notifications';
 import { getAuthErrorMessage, getFirestoreErrorMessage } from '../utils/error-messages';
 import { User as FirebaseUser } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthState {
   // State
@@ -42,6 +43,39 @@ const firebaseUserToUser = (firebaseUser: FirebaseUser): User => {
 };
 
 /**
+ * Manual auth persistence helpers for Expo Go compatibility
+ */
+const AUTH_STORAGE_KEY = '@whatsapp_clone_auth_user';
+
+const saveUserToStorage = async (user: User | null): Promise<void> => {
+  try {
+    if (user) {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      console.log('💾 User saved to AsyncStorage');
+    } else {
+      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      console.log('🗑️ User removed from AsyncStorage');
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to save user to storage:', error);
+  }
+};
+
+const getUserFromStorage = async (): Promise<User | null> => {
+  try {
+    const userData = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    if (userData) {
+      const user = JSON.parse(userData);
+      console.log('📱 User restored from AsyncStorage');
+      return user;
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to restore user from storage:', error);
+  }
+  return null;
+};
+
+/**
  * Auth Store using Zustand
  * Manages authentication state and provides auth actions
  */
@@ -60,6 +94,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isLoading: false,
       error: null,
     });
+    // Save to AsyncStorage for persistence across reloads
+    saveUserToStorage(user);
   },
 
   // Set loading state
@@ -285,6 +321,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initializeAuth: async () => {
     set({ isLoading: true });
 
+    // First, try to restore user from AsyncStorage (for Expo Go compatibility)
+    const storedUser = await getUserFromStorage();
+    let hasRestoredFromStorage = false;
+    
+    if (storedUser) {
+      console.log('🔄 Restoring user from AsyncStorage:', storedUser.email);
+      get().setUser(storedUser); // Use setUser to save to AsyncStorage
+      hasRestoredFromStorage = true;
+      
+      // Initialize presence and push token for restored user
+      try {
+        await initializePresence(storedUser.id);
+        await get().registerPushToken(storedUser.id);
+        console.log('✅ User restored from AsyncStorage');
+      } catch (error) {
+        console.warn('⚠️ Failed to initialize services for restored user:', error);
+      }
+    }
+
     // Configure Google Sign-In
     try {
       await firebaseAuth.configureGoogleSignIn();
@@ -309,12 +364,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await firestoreService.createUser(firebaseUser.uid, user);
           }
 
-          set({
-            user,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          });
+          // Use setUser to save to AsyncStorage
+          get().setUser(user);
 
           // Initialize presence system
           console.log('🟢 Initializing presence for restored user');
@@ -327,23 +378,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch (error: any) {
           console.error('❌ Error loading user data:', error);
           const errorMessage = getFirestoreErrorMessage(error);
-          set({
-            user: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: errorMessage,
-          });
+          get().setUser(null); // Use setUser to clear AsyncStorage
         }
       } else {
-        // User is signed out
-        set({
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: null,
-        });
-
-        console.log('ℹ️ No authenticated user');
+        // User is signed out - only clear if we didn't restore from AsyncStorage
+        if (!hasRestoredFromStorage) {
+          get().setUser(null); // Use setUser to clear AsyncStorage
+          console.log('ℹ️ No authenticated user');
+        } else {
+          console.log('ℹ️ Firebase Auth says no user, but we restored from AsyncStorage');
+        }
       }
     });
 
