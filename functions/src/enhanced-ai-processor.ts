@@ -242,29 +242,28 @@ Current context:
 - Current screen: ${appContext?.currentScreen || "unknown"}
 - Current conversation ID: ${appContext?.currentConversationId || "none"}
 
-CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST ALWAYS use TWO tools in sequence:
+CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST use this exact sequence:
 
-1. FIRST: lookup_contacts(query="[person's name]") to find their user ID
-2. SECOND: send_message(content="[message text]", recipient_id="[user_id from step 1]", sender_id="${appContext?.currentUserId || "unknown"}")
+1. FIRST: Call lookup_contacts(query="[person's name]") to find their user ID
+2. SECOND: Use the results from step 1 to call send_message(content="[message text]", recipient_id="[user_id from lookup_contacts result]", sender_id="${appContext?.currentUserId || "unknown"}")
 
 EXAMPLES OF REQUIRED TOOL CHAINING:
-- "Tell John hello" → MUST call: lookup_contacts(query="John") THEN send_message(content="hello", recipient_id="[result from lookup_contacts]")
-- "Say hello to Sarah" → MUST call: lookup_contacts(query="Sarah") THEN send_message(content="hello", recipient_id="[result from lookup_contacts]")
-- "Tell George I'm working on something really important" → MUST call: lookup_contacts(query="George") THEN send_message(content="I'm working on something really important", recipient_id="[result from lookup_contacts]")
+- "Tell John hello" → FIRST: lookup_contacts(query="John") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
+- "Say hello to Sarah" → FIRST: lookup_contacts(query="Sarah") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
+- "Tell George I'm working on something really important" → FIRST: lookup_contacts(query="George") THEN: send_message(content="I'm working on something really important", recipient_id="[result from lookup_contacts]")
 
-IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop after just calling lookup_contacts. The user expects the message to actually be sent.
-
-TOOL CALLING FORMAT:
-When you need to call multiple tools, you must make multiple tool_calls in your response. For example:
-- For "Tell John hello", you must make TWO tool_calls: one for lookup_contacts and one for send_message
-- Do not try to combine them into a single call
+IMPORTANT: 
+- You MUST call BOTH tools for message sending commands
+- Do not call lookup_contacts twice
+- Use the contact ID from the first lookup_contacts result to call send_message
+- The user expects the message to actually be sent
 
 SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
 - "Find my conversation with Mike" → lookup_contacts(query="Mike") then resolve_conversation
 - "What messages do I have with Mike?" → lookup_contacts(query="Mike") then get_messages
 
-IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop after just calling lookup_contacts. The user expects the message to actually be sent.`;
+When you see tool results, analyze them carefully and decide what to do next based on the user's original request.`;
 
     // Implement iterative tool calling for proper chaining
     const messages: any[] = [
@@ -348,15 +347,60 @@ IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop af
               
               const result = await tool.execute(parameters, context);
               
-              // Add tool result to messages
+              // Add tool result to messages with clear formatting
+              let toolResultContent;
+              if (toolName === "lookup_contacts" && result.success && result.data?.contacts) {
+                // Format lookup_contacts results clearly for the AI
+                const contacts = result.data.contacts;
+                
+                if (contacts.length === 0) {
+                  toolResultContent = JSON.stringify({
+                    success: false,
+                    tool: "lookup_contacts",
+                    error: `No contacts found matching "${parameters.query}"`,
+                    suggestion: "Try a different name or check spelling"
+                  });
+                } else if (contacts.length === 1) {
+                  // Single match - make it very clear what to do next
+                  const contact = contacts[0];
+                  toolResultContent = JSON.stringify({
+                    success: true,
+                    tool: "lookup_contacts",
+                    contact_found: {
+                      user_id: contact.id,
+                      name: contact.name,
+                      email: contact.email,
+                      confidence: contact.confidence
+                    },
+                    instruction: `IMPORTANT: Use this contact's user_id "${contact.id}" as the recipient_id parameter in send_message. Do NOT call lookup_contacts again.`
+                  });
+                } else {
+                  // Multiple matches - let AI choose best one
+                  toolResultContent = JSON.stringify({
+                    success: true,
+                    tool: "lookup_contacts",
+                    contacts_found: contacts.map((c: any) => ({
+                      user_id: c.id,
+                      name: c.name,
+                      email: c.email,
+                      confidence: c.confidence
+                    })),
+                    instruction: `Found ${contacts.length} contacts. Choose the contact with highest confidence and use their user_id as recipient_id in send_message. Do NOT call lookup_contacts again.`
+                  });
+                }
+              } else {
+                toolResultContent = JSON.stringify({
+                  success: result.success,
+                  tool: toolName,
+                  data: result.data,
+                  message: result.success ? "Tool executed successfully" : result.error,
+                });
+              }
+              
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
-                content: JSON.stringify({
-                  success: result.success,
-                  data: result.data,
-                  message: result.success ? "Tool executed successfully" : result.error,
-                }),
+                content: toolResultContent,
               });
               
               logger.info(`Tool ${toolName} executed in iteration ${iterationCount + 1}`, {

@@ -311,21 +311,28 @@ export class LookupContactsTool extends BaseAITool {
 
   private async getRecentContacts(userId: string): Promise<string[]> {
     try {
-      // Get recent conversations
+      // Simplified query without orderBy to avoid index requirement
       const conversationsSnapshot = await admin.firestore()
         .collection("conversations")
         .where("participants", "array-contains", userId)
-        .orderBy("lastMessageAt", "desc")
-        .limit(20)
+        .limit(20) // Still get recent, but without ordering
         .get();
 
+      // Sort in memory instead
+      const conversations = conversationsSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .sort((a: any, b: any) => {
+          const aTime = a.lastMessageAt?.toMillis() || 0;
+          const bTime = b.lastMessageAt?.toMillis() || 0;
+          return bTime - aTime;
+        });
+
       const recentContacts: string[] = [];
-
-      for (const doc of conversationsSnapshot.docs) {
-        const conversationData = doc.data();
-        const participants = conversationData.participants || [];
-
-        // Add other participants to recent contacts
+      for (const conversation of conversations) {
+        const participants = (conversation as any).participants || [];
         for (const participantId of participants) {
           if (participantId !== userId && !recentContacts.includes(participantId)) {
             recentContacts.push(participantId);
