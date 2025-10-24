@@ -64,11 +64,16 @@ export interface Conversation {
   createdAt: Date;
   lastMessageAt: Date;
   lastMessage?: {
+    id: string;
     text: string;
     senderId: string;
     timestamp: Date;
   };
   unreadCount: Record<string, number>;
+  lastSeenBy?: Record<string, {
+    lastMessageId?: string;
+    seenAt: Date;
+  }>;
 }
 
 // State Types

@@ -108,6 +108,15 @@ const findDirectConversation = async (
           createdAt: data.createdAt?.toDate() || new Date(),
           lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
           unreadCount: data.unreadCount || {},
+        lastSeenBy: data.lastSeenBy ? Object.fromEntries(
+          Object.entries(data.lastSeenBy).map(([userId, seenData]: [string, any]) => [
+            userId,
+            {
+              lastMessageId: seenData.lastMessageId,
+              seenAt: seenData.seenAt?.toDate() || new Date()
+            }
+          ])
+        ) : {},
         } as Conversation;
       }
     }
@@ -140,11 +149,21 @@ export const getConversationById = async (
         createdAt: data.createdAt?.toDate() || new Date(),
         lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
         lastMessage: data.lastMessage ? {
+          id: data.lastMessage.id || '',
           text: data.lastMessage.text,
           senderId: data.lastMessage.senderId,
           timestamp: data.lastMessage.timestamp?.toDate() || new Date(),
         } : undefined,
         unreadCount: data.unreadCount || {},
+        lastSeenBy: data.lastSeenBy ? Object.fromEntries(
+          Object.entries(data.lastSeenBy).map(([userId, seenData]: [string, any]) => [
+            userId,
+            {
+              lastMessageId: seenData.lastMessageId,
+              seenAt: seenData.seenAt?.toDate() || new Date()
+            }
+          ])
+        ) : {},
       } as Conversation;
     }
 
@@ -262,11 +281,21 @@ export const getUserConversations = async (userId: string): Promise<Conversation
         createdAt: data.createdAt?.toDate() || new Date(),
         lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
         lastMessage: data.lastMessage ? {
+          id: data.lastMessage.id || '',
           text: data.lastMessage.text,
           senderId: data.lastMessage.senderId,
           timestamp: data.lastMessage.timestamp?.toDate() || new Date(),
         } : undefined,
         unreadCount: data.unreadCount || {},
+        lastSeenBy: data.lastSeenBy ? Object.fromEntries(
+          Object.entries(data.lastSeenBy).map(([userId, seenData]: [string, any]) => [
+            userId,
+            {
+              lastMessageId: seenData.lastMessageId,
+              seenAt: seenData.seenAt?.toDate() || new Date()
+            }
+          ])
+        ) : {},
       } as Conversation;
     });
 

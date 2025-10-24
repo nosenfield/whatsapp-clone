@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, Alert, Image } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Alert, Image, TouchableOpacity } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../src/store/auth-store';
@@ -26,6 +27,8 @@ import {
   formatTypingIndicator,
 } from '../../src/hooks/useTypingIndicators';
 import { uploadImageMessage } from '../../src/services/image-service';
+import { updateUserLastSeen } from '../../src/services/read-receipt-service';
+import { subscribeToConversation } from '../../src/services/firebase-firestore';
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -91,20 +94,24 @@ export default function ConversationScreen() {
   useEffect(() => {
     if (!id || !currentUser?.id) return;
 
-    let unsubscribeFirestore: (() => void) | undefined;
-    let isMounted = true;
+           let unsubscribeFirestore: (() => void) | undefined;
+           let unsubscribeConversation: (() => void) | undefined;
+           let isMounted = true;
 
     const loadConversation = async () => {
       try {
-        // 1. Load conversation metadata from Firestore
-        const conv = await getConversationById(id);
-        if (!conv || !isMounted) {
-          if (!conv) {
-            Alert.alert('Error', 'Conversation not found');
-          }
-          return;
-        }
-        setConversation(conv);
+               // 1. Load conversation metadata from Firestore
+               const conv = await getConversationById(id);
+               if (!conv || !isMounted) {
+                 if (!conv) {
+                   Alert.alert('Error', 'Conversation not found');
+                 }
+                 return;
+               }
+               console.log('📖 Initial conversation loaded:', conv.id);
+               console.log('📖 Initial lastSeenBy:', conv.lastSeenBy);
+               console.log('📖 Initial participants:', conv.participants);
+               setConversation(conv);
 
         // 1.5. Store conversation in SQLite (required for foreign key constraint)
         await upsertConversation(conv);
@@ -119,7 +126,32 @@ export default function ConversationScreen() {
         setHasMoreMessages(totalCount > 50);
         setIsLoading(false);
 
-        // 3. Subscribe to Firestore for real-time updates
+        // 4. Mark messages as read and track conversation view
+        if (currentUser?.id) {
+          try {
+            // Get the last message ID to mark as read
+            const lastMessage = localMessages[localMessages.length - 1];
+            const lastMessageId = lastMessage?.id;
+            
+            // Update user's last seen timestamp
+            await updateUserLastSeen(id, currentUser.id, lastMessageId);
+            
+            console.log('✅ Marked messages as read and tracked conversation view');
+          } catch (error) {
+            console.error('❌ Error marking messages as read:', error);
+            // Don't show error to user as this is background functionality
+          }
+        }
+
+               // 3. Subscribe to conversation updates for real-time read receipts
+               unsubscribeConversation = subscribeToConversation(id, async (updatedConversation) => {
+                 if (!isMounted) return;
+                 console.log('📖 Conversation updated with new lastSeenBy data:', updatedConversation.lastSeenBy);
+                 console.log('📖 Updated conversation participants:', updatedConversation.participants);
+                 setConversation(updatedConversation);
+               });
+
+               // 4. Subscribe to Firestore for real-time message updates
         unsubscribeFirestore = subscribeToMessages(id, async (firebaseMessages) => {
           if (!isMounted) return;
           console.log('📨 Received messages from Firestore:', firebaseMessages.length);
@@ -129,6 +161,7 @@ export default function ConversationScreen() {
           const existingIds = new Set(existingMessages.map((m) => m.id));
 
           // Insert only new messages (not already in SQLite)
+          let hasNewMessages = false;
           for (const fbMessage of firebaseMessages) {
             // Skip if message already exists by ID
             if (existingIds.has(fbMessage.id)) {
@@ -147,6 +180,24 @@ export default function ConversationScreen() {
             
             if (!isDuplicate) {
               await insertMessage(fbMessage);
+              hasNewMessages = true;
+            }
+          }
+
+          // If we received new messages and user is currently in the chat, update their last seen
+          if (hasNewMessages && currentUser?.id) {
+            try {
+              // Get the most recent message to mark as read
+              const updatedMessages = await getConversationMessages(id);
+              const lastMessage = updatedMessages[updatedMessages.length - 1];
+              
+              if (lastMessage?.id) {
+                await updateUserLastSeen(id, currentUser.id, lastMessage.id);
+                console.log('✅ Updated last seen after receiving new message while in chat');
+              }
+            } catch (error) {
+              console.error('❌ Failed to update last seen after receiving message:', error);
+              // Don't fail the message processing if this fails
             }
           }
 
@@ -167,14 +218,18 @@ export default function ConversationScreen() {
 
     loadConversation();
 
-    // Cleanup: unsubscribe from Firestore and mark component as unmounted
-    return () => {
-      isMounted = false;
-      if (unsubscribeFirestore) {
-        console.log('🧹 Cleaning up Firestore listener for conversation:', id);
-        unsubscribeFirestore();
-      }
-    };
+           // Cleanup: unsubscribe from Firestore and mark component as unmounted
+           return () => {
+             isMounted = false;
+             if (unsubscribeFirestore) {
+               console.log('🧹 Cleaning up Firestore listener for conversation:', id);
+               unsubscribeFirestore();
+             }
+             if (unsubscribeConversation) {
+               console.log('🧹 Cleaning up conversation listener for conversation:', id);
+               unsubscribeConversation();
+             }
+           };
   }, [id, currentUser?.id]); // Only re-run if conversation ID or user ID changes
 
   // Handle sending an image message
@@ -252,6 +307,15 @@ export default function ConversationScreen() {
           mediaThumbnail: thumbnailUrl,
         },
       });
+
+      // 6.5. Update user's last seen timestamp since they sent a message
+      try {
+        await updateUserLastSeen(id, currentUser.id, serverId);
+        console.log('✅ Updated last seen after sending image');
+      } catch (error) {
+        console.error('❌ Failed to update last seen after sending image:', error);
+        // Don't fail the image send if this fails
+      }
 
       // 7. Reload messages with updated URLs
       const finalMessages = await getConversationMessages(id);
@@ -332,6 +396,15 @@ export default function ConversationScreen() {
           status: 'sent',
           syncStatus: 'synced',
         });
+
+        // 5.5. Update user's last seen timestamp since they sent a message
+        try {
+          await updateUserLastSeen(id, currentUser.id, serverId);
+          console.log('✅ Updated last seen after sending message');
+        } catch (error) {
+          console.error('❌ Failed to update last seen after sending:', error);
+          // Don't fail the message send if this fails
+        }
 
         // 6. Reload messages
         const finalMessages = await getConversationMessages(id);
@@ -417,11 +490,23 @@ export default function ConversationScreen() {
           headerBackTitle: 'Chats',
           headerTitle: () => (
             <View style={styles.headerContainer}>
-              {!isGroup && otherParticipantPhotoURL && (
-                <Image
-                  source={{ uri: otherParticipantPhotoURL }}
-                  style={styles.headerPhoto}
-                />
+              {!isGroup && (
+                <View style={styles.headerAvatarContainer}>
+                  {otherParticipantPhotoURL ? (
+                    <Image
+                      source={{ uri: otherParticipantPhotoURL }}
+                      style={styles.headerPhoto}
+                    />
+                  ) : (
+                    <View style={styles.headerDefaultAvatar}>
+                      <MaterialIcons
+                        name="person"
+                        size={18}
+                        color="#fff"
+                      />
+                    </View>
+                  )}
+                </View>
               )}
               <View style={styles.headerTextContainer}>
                 <Text style={styles.headerTitle}>{conversationName}</Text>
@@ -460,6 +545,7 @@ export default function ConversationScreen() {
           appContext={aiContext}
           style={styles.aiFab}
         />
+        
       </View>
     </>
   );
@@ -481,11 +567,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  headerAvatarContainer: {
+    marginRight: 8,
+  },
   headerPhoto: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    marginRight: 8,
+  },
+  headerDefaultAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTextContainer: {
     flex: 1,

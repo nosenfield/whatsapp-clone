@@ -485,11 +485,13 @@ const rowToConversation = (row: any): Conversation => {
     createdAt: new Date(row.createdAt),
     lastMessageAt: new Date(row.lastMessageAt),
     lastMessage: row.lastMessageText ? {
+      id: '', // We don't store the ID in SQLite, will be populated from Firestore
       text: row.lastMessageText,
       senderId: row.lastMessageSenderId,
       timestamp: new Date(row.lastMessageAt),
     } : undefined,
     unreadCount: { [row.id]: row.unreadCount }, // Simplified for local storage
+    lastSeenBy: {}, // Not stored in SQLite, will be populated from Firestore
   };
 };
 

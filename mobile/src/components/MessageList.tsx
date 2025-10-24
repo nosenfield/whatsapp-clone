@@ -1,7 +1,9 @@
 import { FlatList, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MessageBubble } from './MessageBubble';
-import { Message, Conversation } from '../types';
+import { ReadReceiptLine } from './ReadReceiptLine';
+import { Message, Conversation, User } from '../types';
+import { getUsersWhoReadMessage } from '../services/read-receipt-service';
 
 interface MessageListProps {
   messages: Message[];
@@ -44,6 +46,60 @@ export function MessageList({
     );
   };
 
+  const renderMessageWithReadReceipt = (message: Message, index: number) => {
+    // Debug: Check conversation data
+    console.log('📖 Debug - Conversation:', conversation?.id);
+    console.log('📖 Debug - lastSeenBy:', conversation?.lastSeenBy);
+    console.log('📖 Debug - participants:', conversation?.participants);
+    
+    // Use timestamp-based approach to determine who has read this message
+    const usersWhoRead = getUsersWhoReadMessage(
+      message,
+      conversation?.lastSeenBy,
+      conversation?.participants,
+      messages
+    );
+    
+    const hasReadReceipts = usersWhoRead.length > 0;
+    
+    console.log('📖 Message:', message.id, 'hasReadReceipts:', hasReadReceipts, 'readers:', usersWhoRead.length);
+
+    // Get user details for read receipts
+    const readReceiptUsers = usersWhoRead.map(receipt => {
+      const participantDetails = conversation?.participantDetails[receipt.userId];
+      return {
+        userId: receipt.userId,
+        user: {
+          id: receipt.userId,
+          displayName: participantDetails?.displayName || 'Unknown',
+          email: '', // We don't store email in participantDetails
+          photoURL: participantDetails?.photoURL,
+          createdAt: new Date(),
+          lastActive: new Date(),
+        } as User,
+        readAt: receipt.readAt
+      };
+    });
+
+    return (
+      <View key={message.id || message.localId || String(message.timestamp)}>
+        <MessageBubble
+          message={message}
+          isOwnMessage={message.senderId === currentUserId}
+          showSender={isGroup}
+          conversation={conversation || undefined}
+        />
+        {/* Show read receipt line only if there are actual read receipts */}
+        {hasReadReceipts && (
+          <ReadReceiptLine
+            readBy={readReceiptUsers}
+            currentUserId={currentUserId}
+          />
+        )}
+      </View>
+    );
+  };
+
   if (isLoading) {
     return (
       <View style={styles.centerContent}>
@@ -67,14 +123,7 @@ export function MessageList({
   return (
     <FlatList
       data={messages}
-      renderItem={({ item }) => (
-        <MessageBubble
-          message={item}
-          isOwnMessage={item.senderId === currentUserId}
-          showSender={isGroup}
-          conversation={conversation || undefined}
-        />
-      )}
+      renderItem={({ item, index }) => renderMessageWithReadReceipt(item, index)}
       keyExtractor={(item) => item.id || item.localId || String(item.timestamp)}
       inverted
       contentContainerStyle={styles.listContent}
