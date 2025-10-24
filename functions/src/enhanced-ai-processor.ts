@@ -9,6 +9,8 @@ import {onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {toolRegistry} from "./tools";
 import {ToolChainExecutor, ToolContext, ToolChainContext} from "./tools/ai-tool-interface";
+import {ToolChainParameterMapper} from "./tools/tool-chain-mapper";
+import {ToolChainValidator} from "./tools/tool-chain-validator";
 import {initializeLangSmith} from "./services/langsmith-config";
 import {RunTree} from "langsmith";
 
@@ -86,6 +88,37 @@ export const processEnhancedAICommand = onCall(
           action: "show_error",
           error: parsedCommand.error,
         };
+      }
+
+      // Validate tool chain if multiple tools are needed
+      if (parsedCommand.toolChain && parsedCommand.toolChain.length > 1) {
+        const validation = ToolChainValidator.validateChain(parsedCommand.toolChain);
+        
+        logger.info("Tool chain validation", {
+          valid: validation.valid,
+          pattern: ToolChainValidator.getChainPattern(parsedCommand.toolChain),
+          errors: validation.errors,
+          warnings: validation.warnings
+        });
+
+        if (!validation.valid) {
+          logger.error("Invalid tool chain generated", {
+            errors: validation.errors,
+            toolChain: parsedCommand.toolChain.map(tc => tc.tool)
+          });
+          
+          return {
+            success: false,
+            result: null,
+            response: `Invalid tool sequence: ${validation.errors.join(", ")}`,
+            action: "show_error",
+            error: `Invalid tool sequence: ${validation.errors.join(", ")}`,
+          };
+        }
+
+        if (validation.warnings.length > 0) {
+          logger.warn("Tool chain warnings", {warnings: validation.warnings});
+        }
       }
 
       // Execute tool chain if multiple tools are needed
@@ -323,9 +356,34 @@ When you see tool results, analyze them carefully and decide what to do next bas
       messages.push(response.message);
 
       // Execute tools and add results to conversation
-      for (const toolCall of toolCalls) {
+      const toolResults: any[] = [];
+      
+      for (let i = 0; i < toolCalls.length; i++) {
+        const toolCall = toolCalls[i];
         const toolName = toolCall.function.name;
-        const parameters = JSON.parse(toolCall.function.arguments);
+        let parameters = JSON.parse(toolCall.function.arguments);
+        
+        // Apply parameter mapping from previous tool if available
+        if (i > 0 && toolResults.length > 0) {
+          const previousToolCall = toolCalls[i - 1];
+          const previousToolName = previousToolCall.function.name;
+          const previousResult = toolResults[i - 1];
+          
+          if (previousResult) {
+            parameters = ToolChainParameterMapper.autoMapParameters(
+              previousToolName,
+              previousResult,
+              toolName,
+              parameters
+            );
+            
+            logger.info("Applied parameter mapping", {
+              from: previousToolName,
+              to: toolName,
+              mappedParams: parameters
+            });
+          }
+        }
         
         // Add to tool chain
         toolChain.push({
@@ -346,6 +404,9 @@ When you see tool results, analyze them carefully and decide what to do next bas
               };
               
               const result = await tool.execute(parameters, context);
+              
+              // Store result for parameter mapping
+              toolResults.push(result);
               
               // Add tool result to messages with clear formatting
               let toolResultContent;
