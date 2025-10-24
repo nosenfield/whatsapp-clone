@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, Alert, Image, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Alert, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import {
 } from '../../src/services/database';
 import { sendMessageToFirestore } from '../../src/services/message-service';
 import { usePresence, formatLastSeen } from '../../src/hooks/usePresence';
+import { useMultiplePresence } from '../../src/hooks/useMultiplePresence';
 import {
   useTypingIndicators,
   formatTypingIndicator,
@@ -45,6 +46,7 @@ export default function ConversationScreen() {
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(50); // Start after first 50
+  const [showMemberAvatars, setShowMemberAvatars] = useState(false);
 
   // Determine if this is a group conversation
   const isGroup = conversation?.type === 'group';
@@ -73,6 +75,11 @@ export default function ConversationScreen() {
 
   // Subscribe to other participant's presence (only for direct chats)
   const presence = usePresence(otherParticipantId);
+
+  // Get presence for all group members (only for group chats)
+  const groupMemberPresence = useMultiplePresence(
+    isGroup && conversation ? conversation.participants : []
+  );
 
   // Format header subtitle
   const headerSubtitle = isGroup
@@ -486,10 +493,14 @@ export default function ConversationScreen() {
         options={{
           title: conversationName,
           headerShown: true,
-          headerTitleAlign: 'left',
+          headerTitleAlign: 'center',
           headerBackTitle: 'Chats',
           headerTitle: () => (
-            <View style={styles.headerContainer}>
+            <TouchableOpacity 
+              style={styles.headerContainer}
+              onPress={() => isGroup && setShowMemberAvatars(!showMemberAvatars)}
+              activeOpacity={isGroup ? 0.7 : 1}
+            >
               {!isGroup && (
                 <View style={styles.headerAvatarContainer}>
                   {otherParticipantPhotoURL ? (
@@ -512,10 +523,62 @@ export default function ConversationScreen() {
                 <Text style={styles.headerTitle}>{conversationName}</Text>
                 <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ),
         }}
       />
+      
+      {/* Group Member Avatars Bar */}
+      {showMemberAvatars && conversation && isGroup && (
+        <View style={styles.memberAvatarsBar}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.memberAvatarsScrollContent}
+          >
+            {conversation.participants
+              .map((participantId) => ({
+                id: participantId,
+                participant: conversation.participantDetails[participantId]
+              }))
+              .filter(({ participant }) => participant) // Remove participants without details
+              .sort((a, b) => a.participant.displayName.localeCompare(b.participant.displayName)) // Sort alphabetically
+              .map(({ id: participantId, participant }) => {
+                // Get presence for this participant from pre-collected data
+                const memberPresence = groupMemberPresence[participantId];
+                
+                return (
+                  <View key={participantId} style={styles.memberAvatarContainer}>
+                    <View style={styles.memberAvatarWrapper}>
+                      <View style={styles.memberAvatar}>
+                        {participant.photoURL ? (
+                          <Image
+                            source={{ uri: participant.photoURL }}
+                            style={styles.memberAvatarImage}
+                          />
+                        ) : (
+                          <MaterialIcons
+                            name="person"
+                            size={20}
+                            color="#fff"
+                          />
+                        )}
+                      </View>
+                      {/* Online indicator */}
+                      {memberPresence?.online && (
+                        <View style={styles.memberOnlineIndicator} />
+                      )}
+                    </View>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {participant.displayName}
+                    </Text>
+                  </View>
+                );
+              })}
+          </ScrollView>
+        </View>
+      )}
+      
       <View style={styles.container}>
         <OfflineBanner />
         <MessageList
@@ -566,9 +629,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    justifyContent: 'center',
   },
   headerAvatarContainer: {
-    marginRight: 8,
+    position: 'absolute',
+    left: 0,
   },
   headerPhoto: {
     width: 32,
@@ -584,7 +649,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTextContainer: {
-    flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 17,
@@ -624,6 +689,56 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  memberAvatarsBar: {
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e1e5e9',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  memberAvatarsScrollContent: {
+    paddingHorizontal: 4,
+  },
+  memberAvatarContainer: {
+    alignItems: 'center',
+    marginRight: 12,
+    width: 50,
+  },
+  memberAvatarWrapper: {
+    position: 'relative',
+    marginBottom: 2,
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  memberOnlineIndicator: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#34C759',
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  memberAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  memberName: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });
 
