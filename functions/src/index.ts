@@ -25,7 +25,6 @@ setGlobalOptions({
 // Export all Cloud Functions from their respective modules
 export {sendMessageNotification} from "./notifications";
 export {generateMessageEmbedding} from "./embeddings";
-export {processAICommand} from "./ai-commands";
 
 // Export Parent-Caregiver AI features
 export {extractCalendarEvents} from "./features/calendar-extraction";
