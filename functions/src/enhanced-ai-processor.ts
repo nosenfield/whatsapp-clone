@@ -134,7 +134,8 @@ export const processEnhancedAICommand = onCall(
 );
 
 /**
- * Parse command using AI with proper tool calling
+ * Parse command using AI with iterative tool calling
+ * This implements proper tool chaining by calling the AI multiple times
  */
 async function parseCommandWithToolChain(
   command: string,
@@ -265,48 +266,128 @@ SINGLE TOOL COMMANDS (no chaining needed):
 
 IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop after just calling lookup_contacts. The user expects the message to actually be sent.`;
 
-    let completion;
-    try {
-      completion = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {role: "system", content: systemPrompt},
-          {role: "user", content: command},
-        ],
-        tools: toolDefinitions,
-        tool_choice: "auto",
-        temperature: 0.1,
-      });
-    } catch (openaiError: any) {
-      logger.error("OpenAI API error:", openaiError);
-      
-      if (runTree) {
-        await runTree.end({
-          outputs: {success: false, error: "OpenAI API error: " + openaiError.message},
+    // Implement iterative tool calling for proper chaining
+    const messages: any[] = [
+      {role: "system", content: systemPrompt},
+      {role: "user", content: command},
+    ];
+    
+    const toolChain: any[] = [];
+    let iterationCount = 0;
+    const maxIterations = enableToolChaining ? 3 : 1;
+
+    while (iterationCount < maxIterations) {
+      let completion;
+      try {
+        completion = await client.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages,
+          tools: toolDefinitions,
+          tool_choice: iterationCount === 0 ? "auto" : "auto",
+          temperature: 0.1,
         });
-        await runTree.patchRun();
+      } catch (openaiError: any) {
+        logger.error("OpenAI API error:", openaiError);
+        
+        if (runTree) {
+          await runTree.end({
+            outputs: {success: false, error: "OpenAI API error: " + openaiError.message},
+          });
+          await runTree.patchRun();
+        }
+        
+        return {
+          success: false,
+          error: "AI service not configured. Please set up OpenAI API key.",
+        };
       }
-      
-      return {
-        success: false,
-        error: "AI service not configured. Please set up OpenAI API key.",
-      };
+
+      const response = completion.choices[0];
+      const toolCalls = response.message.tool_calls || [];
+
+      // Debug logging
+      logger.info(`AI tool calls generated (iteration ${iterationCount + 1})`, {
+        toolCallsCount: toolCalls.length,
+        toolCalls: toolCalls.map((tc: any) => ({
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        })),
+        command: command.substring(0, 100),
+      });
+
+      // If no tool calls, we're done
+      if (toolCalls.length === 0) {
+        break;
+      }
+
+      // Add assistant message with tool calls to conversation
+      messages.push(response.message);
+
+      // Execute tools and add results to conversation
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.function.name;
+        const parameters = JSON.parse(toolCall.function.arguments);
+        
+        // Add to tool chain
+        toolChain.push({
+          tool: toolName,
+          parameters,
+        });
+
+        // For iterative calling, we need to execute the tool and provide results
+        // This allows the AI to see the results and decide what to do next
+        if (enableToolChaining && iterationCount < maxIterations - 1) {
+          const tool = toolRegistry.getTool(toolName);
+          if (tool) {
+            try {
+              const context: ToolContext = {
+                currentUserId: appContext?.currentUserId,
+                appContext,
+                requestId: `iter-${iterationCount}-${Date.now()}`,
+              };
+              
+              const result = await tool.execute(parameters, context);
+              
+              // Add tool result to messages
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({
+                  success: result.success,
+                  data: result.data,
+                  message: result.success ? "Tool executed successfully" : result.error,
+                }),
+              });
+              
+              logger.info(`Tool ${toolName} executed in iteration ${iterationCount + 1}`, {
+                success: result.success,
+                hasData: !!result.data,
+              });
+            } catch (error) {
+              logger.error(`Error executing tool ${toolName}:`, error);
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({
+                  success: false,
+                  error: error instanceof Error ? error.message : "Unknown error",
+                }),
+              });
+            }
+          }
+        }
+      }
+
+      iterationCount++;
+
+      // If we're not doing tool chaining, break after first iteration
+      if (!enableToolChaining) {
+        break;
+      }
     }
 
-    const response = completion.choices[0];
-    const toolCalls = response.message.tool_calls || [];
-
-    // Debug logging
-    logger.info("AI tool calls generated", {
-      toolCallsCount: toolCalls.length,
-      toolCalls: toolCalls.map((tc: any) => ({
-        name: tc.function.name,
-        arguments: tc.function.arguments,
-      })),
-      command: command.substring(0, 100),
-    });
-
-    if (toolCalls.length === 0) {
+    // Check if we got any tools
+    if (toolChain.length === 0) {
       if (runTree) {
         await runTree.end({
           outputs: {success: false, error: "No tools selected by AI"},
@@ -320,23 +401,23 @@ IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop af
       };
     }
 
-    // Convert OpenAI tool calls to our format
-    const toolChain = toolCalls.map((toolCall: any) => ({
-      tool: toolCall.function.name,
-      parameters: JSON.parse(toolCall.function.arguments),
-    }));
-
     if (runTree) {
       await runTree.end({
         outputs: {
           success: true,
           toolChain: toolChain.map((tc: any) => tc.tool),
           toolCount: toolChain.length,
-          tokensUsed: completion.usage?.total_tokens || 0,
+          iterations: iterationCount,
         },
       });
       await runTree.patchRun();
     }
+
+    logger.info("Tool chain generated", {
+      toolCount: toolChain.length,
+      tools: toolChain.map((tc) => tc.tool),
+      iterations: iterationCount,
+    });
 
     return {
       success: true,
