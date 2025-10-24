@@ -81,18 +81,45 @@ export function MessageList({
       };
     });
 
+    // Determine if this is the first message (chronologically earliest)
+    const firstMessage = messages.reduce((earliest, current) => 
+      current.timestamp < earliest.timestamp ? current : earliest
+    );
+    const isFirstMessage = message.id === firstMessage.id;
+
+    // Check if any users haven't opened the conversation (should show above first message)
+    const usersWhoNeverOpened = readReceiptUsers.filter(user => {
+      const userLastSeen = conversation?.lastSeenBy?.[user.userId];
+      return !userLastSeen || !userLastSeen.lastMessageId;
+    });
+
+    // Check if any users have read messages (should show below their last read message)
+    const usersWhoReadMessages = readReceiptUsers.filter(user => {
+      const userLastSeen = conversation?.lastSeenBy?.[user.userId];
+      return userLastSeen && userLastSeen.lastMessageId;
+    });
+
     return (
       <View key={message.id || message.localId || String(message.timestamp)}>
+        {/* Show read receipt ABOVE first message for users who never opened conversation */}
+        {isFirstMessage && usersWhoNeverOpened.length > 0 && (
+          <ReadReceiptLine
+            readBy={usersWhoNeverOpened}
+            currentUserId={currentUserId}
+          />
+        )}
+        
         <MessageBubble
           message={message}
           isOwnMessage={message.senderId === currentUserId}
           showSender={isGroup}
           conversation={conversation || undefined}
         />
-        {/* Show read receipt line only if there are actual read receipts */}
-        {hasReadReceipts && (
+        
+        {/* Show read receipt BELOW message for users who have read messages */}
+        {usersWhoReadMessages.length > 0 && (
           <ReadReceiptLine
-            readBy={readReceiptUsers}
+            readBy={usersWhoReadMessages}
             currentUserId={currentUserId}
           />
         )}

@@ -55,7 +55,8 @@ export const hasUserReadMessage = (
 
 /**
  * Get users who have read a specific message
- * Only returns users for whom this is their LAST read message
+ * Returns users for whom this is their LAST read message, OR users who haven't opened the conversation yet
+ * Note: Positioning logic (above/below) is handled in MessageList component
  */
 export const getUsersWhoReadMessage = (
   message: Message,
@@ -70,9 +71,36 @@ export const getUsersWhoReadMessage = (
   return conversationParticipants
     .filter(userId => {
       const userLastSeen = conversationLastSeenBy[userId];
-      if (!userLastSeen) return false;
       
-      // User has read this message if it's before or at their last seen timestamp
+      // Case 1: User has never opened the conversation (no lastSeenBy entry)
+      // Show read receipt above the FIRST message to indicate they haven't read anything
+      if (!userLastSeen) {
+        if (allMessages && allMessages.length > 0) {
+          const firstMessage = allMessages.reduce((earliest, current) => 
+            current.timestamp < earliest.timestamp ? current : earliest
+          );
+          const isFirstMessage = message.id === firstMessage.id;
+          console.log(`📖 User ${userId} - Never opened conversation, showing on first message: ${isFirstMessage}`);
+          return isFirstMessage;
+        }
+        return false;
+      }
+      
+      // Case 2: User has opened conversation but hasn't read any messages
+      // Show read receipt above the FIRST message
+      if (!userLastSeen.lastMessageId) {
+        if (allMessages && allMessages.length > 0) {
+          const firstMessage = allMessages.reduce((earliest, current) => 
+            current.timestamp < earliest.timestamp ? current : earliest
+          );
+          const isFirstMessage = message.id === firstMessage.id;
+          console.log(`📖 User ${userId} - Opened conversation but no messages read, showing on first message: ${isFirstMessage}`);
+          return isFirstMessage;
+        }
+        return false;
+      }
+      
+      // Case 3: User has read messages - only show read receipt for their LAST read message
       const hasReadThisMessage = message.timestamp <= userLastSeen.seenAt;
       
       if (!hasReadThisMessage) return false;
@@ -95,6 +123,6 @@ export const getUsersWhoReadMessage = (
     })
     .map(userId => ({
       userId,
-      readAt: conversationLastSeenBy[userId].seenAt
+      readAt: conversationLastSeenBy[userId]?.seenAt || new Date()
     }));
 };

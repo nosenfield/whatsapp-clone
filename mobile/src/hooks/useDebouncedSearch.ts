@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { searchUsersByEmail, searchUsersByDisplayName, SearchResult, SearchOptions } from '../services/user-search';
+import { searchUsersByEmail, searchUsersByDisplayName, searchUsers, SearchResult, SearchOptions } from '../services/user-search';
 import { User } from '../types';
 import { DocumentSnapshot } from 'firebase/firestore';
 
@@ -62,6 +62,7 @@ export const useDebouncedSearch = (
         setLastDoc(null);
         setIsLoading(false);
         setLastSearchedQuery('');
+        setCurrentQuery('');
       }
       return;
     }
@@ -72,6 +73,9 @@ export const useDebouncedSearch = (
       setIsLoading(true);
       setCurrentQuery(trimmedQuery);
       setLastSearchedQuery(trimmedQuery);
+      // Reset pagination state for new query
+      setLastDoc(null);
+      setHasMore(false);
     }
     setError(null);
 
@@ -83,28 +87,14 @@ export const useDebouncedSearch = (
 
       let searchResults: SearchResult;
 
+      // Use the new unified search function for better results
       if (searchBy === 'email') {
         searchResults = await searchUsersByEmail(searchQuery.trim(), searchOptions);
       } else if (searchBy === 'displayName') {
         searchResults = await searchUsersByDisplayName(searchQuery.trim(), searchOptions);
       } else if (searchBy === 'both') {
-        // Search both email and display name, then merge and deduplicate
-        const [emailResults, nameResults] = await Promise.all([
-          searchUsersByEmail(searchQuery.trim(), searchOptions),
-          searchUsersByDisplayName(searchQuery.trim(), searchOptions),
-        ]);
-
-        // Merge results and remove duplicates by ID
-        const allResults = [...emailResults.users, ...nameResults.users];
-        const uniqueResults = allResults.filter((user, index, self) => 
-          index === self.findIndex(u => u.id === user.id)
-        );
-        
-        searchResults = {
-          users: uniqueResults,
-          lastDoc: emailResults.lastDoc || nameResults.lastDoc,
-          hasMore: emailResults.hasMore || nameResults.hasMore,
-        };
+        // Use unified search for comprehensive results
+        searchResults = await searchUsers(searchQuery.trim(), searchOptions);
       } else {
         throw new Error('Invalid searchBy option');
       }
@@ -158,6 +148,8 @@ export const useDebouncedSearch = (
     setLastDoc(null);
     setCurrentQuery('');
     setLastSearchedQuery('');
+    setIsLoading(false);
+    setIsLoadingMore(false);
   }, []);
 
   return {
