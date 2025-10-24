@@ -14,7 +14,7 @@ interface AICommandResult {
   runId?: string; // LangSmith run ID
 }
 
-export const useAICommands = (currentConversationId?: string) => {
+export const useAICommands = (currentConversationId?: string, appContext?: any) => {
   const { user } = useAuthStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,26 @@ export const useAICommands = (currentConversationId?: string) => {
       // Use the Cloud Function with LangSmith logging
       const processAICommand = httpsCallable(functions, 'processAICommand');
       
-      const appContext = {
+      // Debug logging
+      console.log('🔍 AI Command Debug:');
+      console.log('  - currentConversationId:', currentConversationId);
+      console.log('  - appContext:', appContext);
+      console.log('  - appContext.currentScreen:', appContext?.currentScreen);
+      console.log('  - appContext.currentConversationId:', appContext?.currentConversationId);
+
+      // Use the passed appContext if available, otherwise create a fallback
+      const contextToUse = appContext ? {
+        currentScreen: appContext.currentScreen === 'ConversationList' ? 'chats' : 
+                      appContext.currentScreen === 'ConversationView' ? 'conversation' :
+                      appContext.currentScreen === 'Profile' ? 'profile' : 'settings',
+        currentConversationId: appContext.currentConversationId,
+        currentUserId: user.id,
+        recentConversations: [], // Could be populated from your conversation list
+        deviceInfo: {
+          platform: 'ios' as const,
+          version: '1.0.0',
+        },
+      } : {
         currentScreen: currentConversationId ? 'conversation' : 'chats',
         currentConversationId,
         currentUserId: user.id,
@@ -52,9 +71,11 @@ export const useAICommands = (currentConversationId?: string) => {
         },
       };
 
+      console.log('  - Final contextToUse:', contextToUse);
+
       const result = await processAICommand({
         command,
-        appContext,
+        appContext: contextToUse,
         currentUserId: user.id,
       });
 

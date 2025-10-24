@@ -451,6 +451,31 @@ async function parseCommandWithLangChain(
       };
     }
 
+    // Summarize conversation pattern: "Summarize this conversation" or "Summarize conversation"
+    if (lowerCommand.includes('summarize') && (lowerCommand.includes('this conversation') || lowerCommand.includes('conversation'))) {
+      await runTree.end({
+        outputs: {
+          action: "summarizeCurrentConversation",
+          parameters: {
+            timeFilter: "all",
+          },
+          success: true,
+        },
+      });
+      await runTree.patchRun();
+
+      return {
+        success: true,
+        intent: {
+          action: "summarizeCurrentConversation",
+          parameters: {
+            timeFilter: "all",
+          },
+        },
+        runId: runTree.id,
+      };
+    }
+
     // Default to no action
     await runTree.end({
       outputs: {

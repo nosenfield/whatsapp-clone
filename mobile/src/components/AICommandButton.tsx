@@ -36,7 +36,15 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
 }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [command, setCommand] = useState('');
-  const { executeCommand, isProcessing, error } = useAICommands(currentConversationId);
+  
+  // Debug logging
+  console.log('🔍 AICommandButton Debug:');
+  console.log('  - currentConversationId:', currentConversationId);
+  console.log('  - appContext:', appContext);
+  console.log('  - appContext.currentScreen:', appContext?.currentScreen);
+  console.log('  - appContext.currentConversationId:', appContext?.currentConversationId);
+  
+  const { executeCommand, isProcessing, error } = useAICommands(currentConversationId, appContext);
 
   const handleCommandSubmit = async () => {
     if (!command.trim()) return;
