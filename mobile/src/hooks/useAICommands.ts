@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/auth-store';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase.config';
+import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command-service';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
 
 interface AICommandResult {
@@ -38,18 +37,15 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
     setError(null);
 
     try {
-      // Use the Cloud Function with LangSmith logging
-      const processAICommand = httpsCallable(functions, 'processAICommand');
-      
       // Debug logging
-      console.log('🔍 AI Command Debug:');
+      console.log('🔍 Enhanced AI Command Debug:');
       console.log('  - currentConversationId:', currentConversationId);
       console.log('  - appContext:', appContext);
       console.log('  - appContext.currentScreen:', appContext?.currentScreen);
       console.log('  - appContext.currentConversationId:', appContext?.currentConversationId);
 
       // Use the passed appContext if available, otherwise create a fallback
-      const contextToUse = appContext ? {
+      const contextToUse: EnhancedAppContext = appContext ? {
         currentScreen: appContext.currentScreen === 'ConversationList' ? 'chats' : 
                       appContext.currentScreen === 'ConversationView' ? 'conversation' :
                       appContext.currentScreen === 'Profile' ? 'profile' : 'settings',
@@ -73,13 +69,11 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
 
       console.log('  - Final contextToUse:', contextToUse);
 
-      const result = await processAICommand({
-        command,
-        appContext: contextToUse,
-        currentUserId: user.id,
+      // Use the enhanced AI command service with proper tool calling
+      const response = await enhancedAICommandService.processCommand(command, contextToUse, {
+        enableToolChaining: true,
+        maxChainLength: 5,
       });
-
-      const response = result.data as any;
       
       // Log LangSmith run ID if available
       if (response.runId) {

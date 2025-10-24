@@ -452,7 +452,7 @@ async function parseCommandWithLangChain(
     }
 
     // Summarize conversation pattern: "Summarize this conversation" or "Summarize conversation"
-    if (lowerCommand.includes('summarize') && (lowerCommand.includes('this conversation') || lowerCommand.includes('conversation'))) {
+    if (lowerCommand.includes("summarize") && (lowerCommand.includes("this conversation") || lowerCommand.includes("conversation"))) {
       await runTree.end({
         outputs: {
           action: "summarizeCurrentConversation",
@@ -1371,6 +1371,9 @@ export const generateMessageEmbedding = onDocumentCreated(
 
 // Export Parent-Caregiver AI features
 export {extractCalendarEvents};
+
+// Export Enhanced AI Command Processor
+export {processEnhancedAICommand} from "./enhanced-ai-processor";
 
 /**
  * Clean up old notification receipts (optional maintenance function)
