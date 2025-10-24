@@ -171,13 +171,17 @@ export abstract class BaseAITool implements AITool {
   }
 
   protected async createConversation(participants: string[], name?: string): Promise<any> {
-    const conversationData = {
+    const conversationData: any = {
       type: participants.length === 2 ? "direct" : "group",
       participants,
-      name: name || undefined,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+
+    // Only add name field if it's provided and not undefined
+    if (name !== undefined && name !== null) {
+      conversationData.name = name;
+    }
 
     const docRef = await admin.firestore().collection("conversations").add(conversationData);
 

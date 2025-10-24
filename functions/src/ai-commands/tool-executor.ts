@@ -154,7 +154,7 @@ async function executeFindOrCreateConversation(params: any, currentUserId: strin
 
     return {
       success: true,
-      conversationId: conversation.id,
+      conversationId: conversation?.id,
       wasCreated,
       action: "navigate_to_conversation",
     };
@@ -196,15 +196,15 @@ async function executeSendMessageToContact(params: any, currentUserId: string) {
 
     // Send message
     const message = await sendMessage({
-      conversationId: conversation.id,
+      conversationId: conversation?.id,
       senderId: currentUserId,
       content: {text: messageText, type: "text"},
     });
 
     return {
       success: true,
-      conversationId: conversation.id,
-      messageId: message.id,
+      conversationId: conversation?.id,
+      messageId: message?.id,
       action: "navigate_to_conversation",
     };
   } catch (error) {

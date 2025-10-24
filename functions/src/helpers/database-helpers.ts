@@ -82,7 +82,7 @@ export async function findConversation(userId1: string, userId2: string) {
  * @return {Promise<Object>} Created conversation data
  */
 export async function createConversation(participants: string[]) {
-  const conversationData = {
+  const conversationData: any = {
     type: participants.length === 2 ? "direct" : "group",
     participants,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
