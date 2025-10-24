@@ -178,10 +178,22 @@ async function parseCommandWithToolChain(
         parameters: {
           type: "object",
           properties: tool.parameters.reduce((props, param) => {
-            props[param.name] = {
+            const paramDef: any = {
               type: param.type,
               description: param.description,
             };
+            
+            // Add items property for array types
+            if (param.type === "array" && param.items) {
+              paramDef.items = {
+                type: param.items.type,
+              };
+              if (param.items.enum) {
+                paramDef.items.enum = param.items.enum;
+              }
+            }
+            
+            props[param.name] = paramDef;
             return props;
           }, {} as any),
           required: tool.parameters.filter((p) => p.required).map((p) => p.name),
@@ -192,40 +204,78 @@ async function parseCommandWithToolChain(
     // Use OpenAI to parse the command and select tools
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const openai = require("openai");
+    
+    // Check if OpenAI API key is available
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey || openaiApiKey === "your-openai-api-key-here") {
+      logger.warn("OpenAI API key not available, falling back to simple parsing");
+      
+      if (runTree) {
+        await runTree.end({
+          outputs: {success: false, error: "OpenAI API key not configured"},
+        });
+        await runTree.patchRun();
+      }
+      
+      return {
+        success: false,
+        error: "AI service not configured. Please set up OpenAI API key.",
+      };
+    }
+    
     const client = new openai.OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: openaiApiKey,
     });
 
-    const systemPrompt = `You are an AI assistant for a WhatsApp-like messaging app. You can help users with various tasks using the available tools.
-
-Available tools:
-${availableTools.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n")}
+    const systemPrompt = `You are an AI assistant for a WhatsApp-like messaging app. You have access to several tools to help users with messaging tasks.
 
 Current context:
 - User ID: ${appContext?.currentUserId || "unknown"}
 - Current screen: ${appContext?.currentScreen || "unknown"}
 - Current conversation ID: ${appContext?.currentConversationId || "none"}
 
-When a user gives you a command, analyze what they want to do and select the appropriate tool(s) to accomplish their request. You can use multiple tools in sequence if needed.
+IMPORTANT: When sending messages to people by name, you MUST first use lookup_contacts to find their user ID, then use send_message with the recipient_id.
 
-Examples:
-- "Say hello to John" → Use send_message tool
-- "Find my conversation with Sarah" → Use lookup_contacts then resolve_conversation
-- "Show me my recent conversations" → Use get_conversations
-- "What messages do I have with Mike?" → Use lookup_contacts then get_messages
+Examples of proper tool chaining:
+- "Tell John hello" → FIRST: lookup_contacts(query="John") THEN: send_message(content="hello", recipient_id="[from lookup_contacts result]")
+- "Say hello to Sarah" → FIRST: lookup_contacts(query="Sarah") THEN: send_message(content="hello", recipient_id="[from lookup_contacts result]")
+- "Find my conversation with Mike" → lookup_contacts(query="Mike") then resolve_conversation
+- "Show me my recent conversations" → get_conversations
+- "What messages do I have with Mike?" → lookup_contacts(query="Mike") then get_messages
 
-Always respond with a JSON object containing the tool calls you want to make.`;
+CRITICAL: For any "Tell [Name] [message]" or "Say [message] to [Name]" commands, you MUST:
+1. First call lookup_contacts to find the person
+2. Then call send_message with the recipient_id from step 1
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {role: "system", content: systemPrompt},
-        {role: "user", content: command},
-      ],
-      tools: toolDefinitions,
-      tool_choice: "auto",
-      temperature: 0.1,
-    });
+Always use the appropriate tools in the correct sequence to accomplish the user's request.`;
+
+    let completion;
+    try {
+      completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {role: "system", content: systemPrompt},
+          {role: "user", content: command},
+        ],
+        tools: toolDefinitions,
+        tool_choice: "auto",
+        temperature: 0.1,
+      });
+    } catch (openaiError: any) {
+      logger.error("OpenAI API error:", openaiError);
+      
+      if (runTree) {
+        await runTree.end({
+          outputs: {success: false, error: "OpenAI API error: " + openaiError.message},
+        });
+        await runTree.patchRun();
+      }
+      
+      return {
+        success: false,
+        error: "AI service not configured. Please set up OpenAI API key.",
+      };
+    }
 
     const response = completion.choices[0];
     const toolCalls = response.message.tool_calls || [];

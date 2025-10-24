@@ -40,7 +40,11 @@ This folder contains comprehensive documentation for building a WhatsApp-inspire
 
 ### 2. [task-list.md](./task-list.md) - Implementation Task List
 **Purpose**: Sequential implementation guide with detailed tasks  
-**When to Use**: Step-by-step development workflow from setup to deployment  
+**When to Use**: Step-by-step development workflow from setup to deployment
+
+### 3. [ai-development-guide.md](./ai-development-guide.md) - AI Development Best Practices
+**Purpose**: Guidelines and patterns for AI integration  
+**When to Use**: When implementing AI features, tool chaining, or OpenAI integration  
 
 **Contains**:
 - Project setup prerequisites and environment configuration
@@ -384,6 +388,7 @@ whatsapp-clone/
 |-------|----------|---------|
 | What to build | architecture.md | MVP Requirements |
 | How to build | task-list.md | Sequential Tasks |
+| AI best practices | ai-development-guide.md | Critical Anti-Patterns |
 | Why these choices | architecture.md | Architectural Decisions |
 | Data models | architecture.md | Data Models |
 | Real-time flows | architecture.md | Real-Time Data Flow |
@@ -406,6 +411,15 @@ whatsapp-clone/
 5. **Offline-first**: App must work without network connection
 6. **Security**: Development uses test mode rules (update for production)
 7. **Physical device required**: Push notifications only work on real devices
+
+### AI Development Best Practices
+1. **NEVER include tool definitions in prompts**: Tools are passed via the `tools` parameter to OpenAI
+2. **Focus prompts on strategy and examples**: Explain HOW to use tools, not WHAT tools exist
+3. **Keep prompts concise**: Avoid redundant information that wastes tokens
+4. **Use clear tool chaining examples**: Show the AI the correct sequence of tool calls
+5. **Test tool schemas thoroughly**: Ensure array parameters have proper `items` definitions
+6. **Implement graceful fallbacks**: When AI services fail, fall back to simpler parsers
+7. **Log tool execution**: Use LangSmith or similar for debugging AI tool chains
 
 ### Constraints & Limits
 - **Group chat**: 20 users maximum (MVP)

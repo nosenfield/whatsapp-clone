@@ -59,10 +59,20 @@ export async function parseCommandWithLangChain(
 
     // Simple command parsing for now - can be enhanced with LangChain later
     const lowerCommand = command.toLowerCase();
+    
+    logger.info("Parsing command", {
+      originalCommand: command.substring(0, 100),
+      lowerCommand: lowerCommand.substring(0, 100),
+    });
 
     // Send message pattern: "Tell [contact] [message]"
     const sendMatch = lowerCommand.match(/tell\s+(\w+)\s+(.+)/);
     if (sendMatch) {
+      logger.info("Matched send message pattern", {
+        contactName: sendMatch[1],
+        messageText: sendMatch[2],
+      });
+      
       // End the run successfully
       await runTree.end({
         outputs: {

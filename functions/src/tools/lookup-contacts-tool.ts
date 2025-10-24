@@ -46,6 +46,10 @@ export class LookupContactsTool extends BaseAITool {
       description: "Fields to search in (displayName, email, phone)",
       required: false,
       default: ["displayName", "email"],
+      items: {
+        type: "string",
+        enum: ["displayName", "email", "phoneNumber"]
+      }
     },
     {
       name: "min_confidence",

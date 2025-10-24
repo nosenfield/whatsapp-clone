@@ -23,6 +23,10 @@ export interface ToolParameter {
   description: string;
   required: boolean;
   default?: any;
+  items?: {
+    type: "string" | "number" | "boolean";
+    enum?: string[];
+  };
 }
 
 // Context passed to all tools
