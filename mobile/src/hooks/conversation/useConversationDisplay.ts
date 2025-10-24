@@ -34,7 +34,7 @@ export const useConversationDisplay = ({
       const otherParticipant = conversation?.participants.find(
         (p) => p !== currentUserId
       );
-      return otherParticipant && conversation?.participantDetails[otherParticipant]
+      return otherParticipant && conversation?.participantDetails?.[otherParticipant]
         ? conversation.participantDetails[otherParticipant].displayName
         : 'Chat';
     }
@@ -50,7 +50,7 @@ export const useConversationDisplay = ({
   // Get other participant's photo URL (for direct chats)
   const otherParticipantPhotoURL = useMemo(() => {
     return !isGroup && otherParticipantId
-      ? conversation?.participantDetails[otherParticipantId]?.photoURL
+      ? conversation?.participantDetails?.[otherParticipantId]?.photoURL
       : undefined;
   }, [conversation, otherParticipantId, isGroup]);
 

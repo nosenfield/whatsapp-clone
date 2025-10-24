@@ -287,18 +287,25 @@ Current context:
 CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST use this exact sequence:
 
 1. FIRST: Call lookup_contacts(query="[person's name]") to find their user ID
-2. SECOND: Use the results from step 1 to call send_message(content="[message text]", recipient_id="[user_id from lookup_contacts result]", sender_id="${appContext?.currentUserId || "unknown"}")
+2. CHECK: If lookup_contacts returns needs_clarification=true, you MUST call request_clarification tool BEFORE proceeding
+3. SECOND: Use the results from step 1 (or user selection from clarification) to call send_message(content="[message text]", recipient_id="[user_id from lookup_contacts result]", sender_id="${appContext?.currentUserId || "unknown"}")
 
 EXAMPLES OF REQUIRED TOOL CHAINING:
 - "Tell John hello" → FIRST: lookup_contacts(query="John") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
 - "Say hello to Sarah" → FIRST: lookup_contacts(query="Sarah") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
 - "Tell George I'm working on something really important" → FIRST: lookup_contacts(query="George") THEN: send_message(content="I'm working on something really important", recipient_id="[result from lookup_contacts]")
 
+CLARIFICATION HANDLING:
+- If lookup_contacts returns needs_clarification=true, you MUST call request_clarification tool
+- Do NOT proceed with send_message until user provides clarification
+- Use the clarification_options from lookup_contacts result for the request_clarification tool
+
 IMPORTANT: 
-- You MUST call BOTH tools for message sending commands
+- You MUST call BOTH tools for message sending commands (unless clarification is needed)
 - Do not call lookup_contacts twice
 - Use the contact ID from the first lookup_contacts result to call send_message
 - The user expects the message to actually be sent
+- ALWAYS respect clarification requests - do not guess which contact the user meant
 
 SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
@@ -422,6 +429,37 @@ When you see tool results, analyze them carefully and decide what to do next bas
               if (toolName === "lookup_contacts" && result.success && result.data?.contacts) {
                 // Format lookup_contacts results clearly for the AI
                 const contacts = result.data.contacts;
+                const needsClarification = result.data.needs_clarification;
+                const clarificationReason = result.data.clarification_reason;
+                const clarificationOptions = result.data.clarification_options;
+                
+                // Comprehensive logging for debugging
+                logger.info("🔍 AI Processor handling lookup_contacts result", {
+                  query: parameters.query,
+                  contactsFound: contacts.length,
+                  needsClarification: needsClarification,
+                  clarificationReason: clarificationReason,
+                  clarificationOptionsCount: clarificationOptions?.length || 0,
+                  contacts: contacts.map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    email: c.email,
+                    confidence: c.confidence,
+                    is_recent: c.is_recent
+                  })),
+                  clarificationOptions: clarificationOptions?.map((opt: any) => ({
+                    id: opt.id,
+                    title: opt.title,
+                    subtitle: opt.subtitle,
+                    confidence: opt.confidence
+                  })),
+                  fullResultData: {
+                    total_found: result.data.total_found,
+                    search_criteria: result.data.search_criteria,
+                    needs_clarification: result.data.needs_clarification,
+                    clarification_reason: result.data.clarification_reason
+                  }
+                });
                 
                 if (contacts.length === 0) {
                   toolResultContent = JSON.stringify({
@@ -429,6 +467,22 @@ When you see tool results, analyze them carefully and decide what to do next bas
                     tool: "lookup_contacts",
                     error: `No contacts found matching "${parameters.query}"`,
                     suggestion: "Try a different name or check spelling"
+                  });
+                } else if (needsClarification) {
+                  // Clarification needed - instruct AI to call request_clarification tool
+                  toolResultContent = JSON.stringify({
+                    success: true,
+                    tool: "lookup_contacts",
+                    contacts_found: contacts.map((c: any) => ({
+                      user_id: c.id,
+                      name: c.name,
+                      email: c.email,
+                      confidence: c.confidence
+                    })),
+                    needs_clarification: true,
+                    clarification_reason: clarificationReason,
+                    clarification_options: clarificationOptions,
+                    instruction: `CLARIFICATION NEEDED: Call request_clarification tool with clarification_type="contact_selection", question="Which contact did you mean?", options=[${clarificationOptions?.map((opt: any) => `"${opt.title} (${opt.subtitle})"`).join(', ')}], context="${clarificationReason}". Do NOT proceed with send_message until user selects a contact.`
                   });
                 } else if (contacts.length === 1) {
                   // Single match - make it very clear what to do next

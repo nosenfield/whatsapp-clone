@@ -127,6 +127,27 @@ export class LookupContactsTool extends BaseAITool {
       // Check if clarification is needed
       const needsClarification = this.shouldRequestClarification(contacts, query);
 
+      logger.info("🔍 LookupContactsTool clarification analysis", {
+        query: query,
+        contactsFound: contacts.length,
+        contacts: contacts.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          confidence: c.confidence,
+          is_recent: c.is_recent
+        })),
+        needsClarification: needsClarification.needed,
+        clarificationReason: needsClarification.reason,
+        clarificationOptionsCount: needsClarification.options?.length || 0,
+        clarificationOptions: needsClarification.options?.map((opt: any) => ({
+          id: opt.id,
+          title: opt.title,
+          subtitle: opt.subtitle,
+          confidence: opt.confidence
+        }))
+      });
+
       const result = {
         contacts: contacts,
         total_found: filteredResults.length,
@@ -384,8 +405,19 @@ export class LookupContactsTool extends BaseAITool {
     reason?: string;
     options?: any[];
   } {
+    logger.info("🔍 shouldRequestClarification analysis", {
+      query: query,
+      contactsCount: contacts.length,
+      contacts: contacts.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        confidence: c.confidence
+      }))
+    });
+
     // No contacts found
     if (contacts.length === 0) {
+      logger.info("🔍 Clarification decision: No contacts found - no clarification needed");
       return {
         needed: false,
         reason: "No contacts found",
@@ -394,6 +426,10 @@ export class LookupContactsTool extends BaseAITool {
 
     // Single contact with high confidence - no clarification needed
     if (contacts.length === 1 && contacts[0].confidence >= 0.8) {
+      logger.info("🔍 Clarification decision: Single high-confidence match - no clarification needed", {
+        confidence: contacts[0].confidence,
+        threshold: 0.8
+      });
       return {
         needed: false,
         reason: "Single high-confidence match",
@@ -405,8 +441,18 @@ export class LookupContactsTool extends BaseAITool {
       const topTwo = contacts.slice(0, 2);
       const confidenceDiff = topTwo[0].confidence - topTwo[1].confidence;
       
+      logger.info("🔍 Multiple contacts analysis", {
+        topTwo: topTwo.map((c: any) => ({
+          name: c.name,
+          confidence: c.confidence
+        })),
+        confidenceDiff: confidenceDiff,
+        threshold: 0.2
+      });
+      
       // If top two contacts have similar confidence (within 0.2), ask for clarification
       if (confidenceDiff < 0.2) {
+        logger.info("🔍 Clarification decision: Multiple contacts with similar confidence - clarification needed");
         return {
           needed: true,
           reason: "Multiple contacts with similar confidence scores",
@@ -421,11 +467,17 @@ export class LookupContactsTool extends BaseAITool {
             }
           })),
         };
+      } else {
+        logger.info("🔍 Clarification decision: Multiple contacts but clear winner - no clarification needed");
       }
     }
 
     // Single contact with low confidence
     if (contacts.length === 1 && contacts[0].confidence < 0.6) {
+      logger.info("🔍 Clarification decision: Single low-confidence match - clarification needed", {
+        confidence: contacts[0].confidence,
+        threshold: 0.6
+      });
       return {
         needed: true,
         reason: "Low confidence match - user should confirm",
@@ -443,6 +495,7 @@ export class LookupContactsTool extends BaseAITool {
     }
 
     // Default: no clarification needed
+    logger.info("🔍 Clarification decision: Default - clear best match found");
     return {
       needed: false,
       reason: "Clear best match found",
