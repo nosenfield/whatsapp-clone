@@ -88,7 +88,9 @@ export class ToolChainValidator {
       "lookup_contacts → send_message": "Send message to contact by name",
       "lookup_contacts → resolve_conversation": "Find conversation with contact",
       "lookup_contacts → resolve_conversation → get_messages": "Get messages from contact",
+      "lookup_contacts → resolve_conversation → get_messages → summarize_conversation": "Summarize conversation with contact",
       "resolve_conversation → send_message": "Send message to existing conversation",
+      "get_messages → summarize_conversation": "Summarize conversation messages",
       "get_conversations": "List conversations",
       "lookup_contacts": "Search for contacts"
     };

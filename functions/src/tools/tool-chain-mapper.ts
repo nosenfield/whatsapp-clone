@@ -76,6 +76,28 @@ export class ToolChainParameterMapper {
   }
 
   /**
+   * Map output from get_messages to input for summarize_conversation
+   */
+  static mapGetMessagesToSummarizeConversation(
+    getMessagesResult: ToolResult,
+    summarizeParams: Record<string, any>
+  ): Record<string, any> {
+    if (!getMessagesResult.success || !getMessagesResult.data?.conversation_id) {
+      logger.warn("Cannot map parameters: get_messages failed or missing conversation_id");
+      return summarizeParams;
+    }
+
+    if (!summarizeParams.conversation_id) {
+      summarizeParams.conversation_id = getMessagesResult.data.conversation_id;
+      logger.info("Mapped conversation_id from get_messages", {
+        conversationId: getMessagesResult.data.conversation_id
+      });
+    }
+
+    return summarizeParams;
+  }
+
+  /**
    * Automatically map parameters based on tool sequence
    */
   static autoMapParameters(
@@ -98,6 +120,9 @@ export class ToolChainParameterMapper {
       
       case "resolve_conversation_to_send_message":
         return this.mapResolveConversationToSendMessage(fromToolResult, toToolParams);
+      
+      case "get_messages_to_summarize_conversation":
+        return this.mapGetMessagesToSummarizeConversation(fromToolResult, toToolParams);
       
       case "lookup_contacts_to_resolve_conversation":
         // Map contact ID to contact_identifier

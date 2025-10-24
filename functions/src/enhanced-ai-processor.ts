@@ -449,6 +449,18 @@ When you see tool results, analyze them carefully and decide what to do next bas
                     instruction: `Found ${contacts.length} contacts. Choose the contact with highest confidence and use their user_id as recipient_id in send_message. Do NOT call lookup_contacts again.`
                   });
                 }
+              } else if (toolName === "summarize_conversation" && result.success && result.data?.summary) {
+                // Format summarization results clearly
+                toolResultContent = JSON.stringify({
+                  success: true,
+                  tool: "summarize_conversation",
+                  summary: result.data.summary,
+                  message_count: result.data.message_count,
+                  time_range: result.data.time_range,
+                  participants: result.data.participants,
+                  key_topics: result.data.key_topics,
+                  instruction: "Summary complete. No further action needed."
+                });
               } else {
                 toolResultContent = JSON.stringify({
                   success: result.success,
@@ -677,7 +689,13 @@ function processToolChainResults(results: any[], toolChain: any[]): any {
 function generateChainResponse(results: any[], toolChain: any[]): string {
   const toolNames = toolChain.map((tc) => tc.tool);
 
-  if (toolNames.includes("send_message")) {
+  if (toolNames.includes("summarize_conversation")) {
+    const summarizeResult = results.find(r => r.toolName === "summarize_conversation");
+    if (summarizeResult?.success && summarizeResult.data?.summary) {
+      return `Here's a summary of your conversation:\n\n${summarizeResult.data.summary}`;
+    }
+    return "Summary generated successfully.";
+  } else if (toolNames.includes("send_message")) {
     return "Message sent successfully!";
   } else if (toolNames.includes("lookup_contacts") && toolNames.includes("get_conversations")) {
     return "Found conversations and contacts as requested.";
@@ -730,6 +748,7 @@ function determineAction(result: any, toolName: string): string {
   case "lookup_contacts":
   case "get_messages":
   case "get_conversation_info":
+  case "summarize_conversation":
     return "show_summary";
   default:
     return "no_action";
