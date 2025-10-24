@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { Message } from '../../types';
-import { getConversationMessages, getConversationMessageCount } from '../../services/database';
+import { getConversationMessages, getConversationMessageCount } from '../../services/database/';
 
 interface UseMessagePaginationProps {
   conversationId: string;

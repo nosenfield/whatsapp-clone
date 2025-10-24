@@ -7,14 +7,14 @@
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { Conversation, Message } from '../../types';
-import { getConversationById } from '../../services/conversation-service';
+import { getConversationById } from '../../services/conversation-service/';
 import { subscribeToMessages, subscribeToConversation } from '../../services/firebase-firestore';
 import {
   getConversationMessages,
   getConversationMessageCount,
   insertMessage,
   upsertConversation,
-} from '../../services/database';
+} from '../../services/database/';
 import { updateUserLastSeen } from '../../services/read-receipt-service';
 
 interface UseConversationDataProps {

@@ -51,7 +51,8 @@ export function ReadReceiptLine({ readBy, currentUserId }: ReadReceiptLineProps)
               ]}
             >
               <Avatar
-                user={reader.user}
+                photoURL={reader.user.photoURL}
+                displayName={reader.user.displayName}
                 size={avatarSize}
                 showOnlineIndicator={false}
               />

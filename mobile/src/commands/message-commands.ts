@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { insertMessage, updateMessage, getConversationMessages } from '../services/database';
+import { insertMessage, updateMessage, getConversationMessages } from '../services/database/';
 import { sendMessageToFirestore } from '../services/message-service';
 import { useMessageStore } from '../store/message-store';
 import { Message, MessageContent } from '../types';

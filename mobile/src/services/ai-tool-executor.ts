@@ -1,11 +1,11 @@
 import { useAuthStore } from '../store/auth-store';
-import { searchUsersByEmailLegacy, searchUsersByDisplayNameLegacy } from './user-search';
-import { 
-  createOrGetConversation, 
-  getConversationById 
-} from './conversation-service';
+import { searchUsersByEmail, searchUsersByDisplayName } from './user-search';
+import {
+  createOrGetConversation,
+  getConversationById
+} from './conversation-service/';
 import { sendMessageToFirestore } from './message-service';
-import { getConversationMessages } from './database';
+import { getConversationMessages } from './database/';
 import { createUserFriendlyError, AI_ERRORS } from '../utils/ai-error-handling';
 
 export interface ToolCall {
@@ -98,11 +98,13 @@ export class AIToolExecutor {
   }): Promise<ToolResponse> {
     try {
       // Search by email first (more precise)
-      let users = await searchUsersByEmailLegacy(params.query);
+      const emailResult = await searchUsersByEmail(params.query, { limit: 10 });
+      let users = emailResult.users;
       
       // If no email matches, try display name search
       if (users.length === 0) {
-        users = await searchUsersByDisplayNameLegacy(params.query);
+        const nameResult = await searchUsersByDisplayName(params.query, { limit: 10 });
+        users = nameResult.users;
       }
       
       // Apply limit

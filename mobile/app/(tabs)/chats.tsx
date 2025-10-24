@@ -20,7 +20,7 @@ import { ConversationItem } from '../../src/components/ConversationItem';
 import { AICommandButton } from '../../src/components/AICommandButton';
 import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Conversation } from '../../src/types';
-import { deleteConversation } from '../../src/services/conversation-service';
+import { deleteConversation } from '../../src/services/conversation-service/';
 
 export default function ChatsScreen() {
   const currentUser = useAuthStore((state) => state.user);

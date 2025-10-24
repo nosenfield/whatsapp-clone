@@ -12,7 +12,7 @@ import {
 import { router, Stack } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/store/auth-store';
-import { createOrGetConversation } from '../src/services/conversation-service';
+import { createOrGetConversation } from '../src/services/conversation-service/';
 import { useDebouncedSearch } from '../src/hooks/useDebouncedSearch';
 import { Avatar } from '../src/components/Avatar';
 import { User } from '../src/types';

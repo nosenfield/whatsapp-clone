@@ -13,7 +13,7 @@ import {
   getConversationMessages,
   insertMessage,
   updateMessage,
-} from '../../services/database';
+} from '../../services/database/';
 import { sendMessageToFirestore } from '../../services/message-service';
 import { uploadImageMessage } from '../../services/image-service';
 import { updateUserLastSeen } from '../../services/read-receipt-service';

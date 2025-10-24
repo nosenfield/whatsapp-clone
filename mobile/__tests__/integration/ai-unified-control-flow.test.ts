@@ -1,4 +1,4 @@
-import { AICommandService } from '../../src/services/ai-command-service-unified';
+import { EnhancedAICommandService } from '../../src/services/enhanced-ai-command';
 import { QueryClient } from '@tanstack/react-query';
 import { initDatabase, clearAllData, getConversationMessages } from '../../src/services/database';
 import { createTestUser, createTestConversation } from '../fixtures/test-data';
@@ -18,7 +18,7 @@ jest.mock('../../src/services/message-service', () => ({
 }));
 
 describe('AI Commands Integration', () => {
-  let aiService: AICommandService;
+  let aiService: EnhancedAICommandService;
   let queryClient: QueryClient;
   
   beforeEach(async () => {
@@ -28,7 +28,7 @@ describe('AI Commands Integration', () => {
         mutations: { retry: false },
       },
     });
-    aiService = new AICommandService(queryClient);
+    aiService = new EnhancedAICommandService();
     await initDatabase();
     await clearAllData();
   });

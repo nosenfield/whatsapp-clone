@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { getConversationMessages, getConversationMessageCount } from '../services/database';
+import { getConversationMessages, getConversationMessageCount } from '../services/database/';
 import { Message } from '../types';
 
 const MESSAGES_PER_PAGE = 50;

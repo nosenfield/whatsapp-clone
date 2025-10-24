@@ -6,7 +6,7 @@
 
 import { collection, query, where, orderBy, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { firestore } from '../../firebase.config';
-import { ExtractedEvent } from '../../types';
+import { ExtractedEvent } from '../types';
 
 /**
  * Get extracted events for a conversation

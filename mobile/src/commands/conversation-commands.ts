@@ -3,8 +3,8 @@ import {
   createOrGetConversation, 
   createGroupConversation,
   getConversationById 
-} from '../services/conversation-service';
-import { upsertConversation } from '../services/database';
+} from '../services/conversation-service/';
+import { upsertConversation } from '../services/database/';
 import { Conversation } from '../types';
 
 export interface FindOrCreateConversationCommand {
@@ -29,14 +29,16 @@ export class ConversationCommands {
   async findOrCreateConversation(
     command: FindOrCreateConversationCommand
   ): Promise<Conversation> {
-    const { searchUsersByEmailLegacy, searchUsersByDisplayNameLegacy } = await import('../services/user-search');
+    const { searchUsersByEmail, searchUsersByDisplayName } = await import('../services/user-search');
     
     // 1. Try to find contact by email first
-    let contacts = await searchUsersByEmailLegacy(command.contactName);
+    const emailResult = await searchUsersByEmail(command.contactName, { limit: 10 });
+    let contacts = emailResult.users;
     
     // 2. If no email match, try display name search
     if (contacts.length === 0) {
-      contacts = await searchUsersByDisplayNameLegacy(command.contactName);
+      const nameResult = await searchUsersByDisplayName(command.contactName, { limit: 10 });
+      contacts = nameResult.users;
     }
     
     if (contacts.length === 0) {
