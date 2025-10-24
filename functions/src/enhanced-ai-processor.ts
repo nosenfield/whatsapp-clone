@@ -461,6 +461,19 @@ When you see tool results, analyze them carefully and decide what to do next bas
                   key_topics: result.data.key_topics,
                   instruction: "Summary complete. No further action needed."
                 });
+              } else if (toolName === "request_clarification" && result.success && result.data?.requires_user_input) {
+                // Format clarification requests clearly
+                toolResultContent = JSON.stringify({
+                  success: true,
+                  tool: "request_clarification",
+                  clarification_type: result.data.clarification_type,
+                  question: result.data.question,
+                  context: result.data.context,
+                  options: result.data.options,
+                  best_option: result.data.best_option,
+                  allow_cancel: result.data.allow_cancel,
+                  instruction: "STOP: User clarification required. Present options and wait for user selection."
+                });
               } else {
                 toolResultContent = JSON.stringify({
                   success: result.success,
@@ -689,7 +702,13 @@ function processToolChainResults(results: any[], toolChain: any[]): any {
 function generateChainResponse(results: any[], toolChain: any[]): string {
   const toolNames = toolChain.map((tc) => tc.tool);
 
-  if (toolNames.includes("summarize_conversation")) {
+  if (toolNames.includes("request_clarification")) {
+    const clarificationResult = results.find(r => r.toolName === "request_clarification");
+    if (clarificationResult?.success && clarificationResult.data?.question) {
+      return `I need clarification: ${clarificationResult.data.question}`;
+    }
+    return "Clarification requested.";
+  } else if (toolNames.includes("summarize_conversation")) {
     const summarizeResult = results.find(r => r.toolName === "summarize_conversation");
     if (summarizeResult?.success && summarizeResult.data?.summary) {
       return `Here's a summary of your conversation:\n\n${summarizeResult.data.summary}`;
@@ -750,6 +769,8 @@ function determineAction(result: any, toolName: string): string {
   case "get_conversation_info":
   case "summarize_conversation":
     return "show_summary";
+  case "request_clarification":
+    return "request_clarification";
   default:
     return "no_action";
   }

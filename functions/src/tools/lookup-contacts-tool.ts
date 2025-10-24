@@ -124,6 +124,9 @@ export class LookupContactsTool extends BaseAITool {
         last_contact: await this.getLastContactTime(user_id, result.id),
       })));
 
+      // Check if clarification is needed
+      const needsClarification = this.shouldRequestClarification(contacts, query);
+
       const result = {
         contacts: contacts,
         total_found: filteredResults.length,
@@ -133,6 +136,9 @@ export class LookupContactsTool extends BaseAITool {
           min_confidence: min_confidence,
           include_recent: include_recent,
         },
+        needs_clarification: needsClarification.needed,
+        clarification_reason: needsClarification.reason,
+        clarification_options: needsClarification.options,
       };
 
       return {
@@ -368,5 +374,78 @@ export class LookupContactsTool extends BaseAITool {
       logger.warn("Error getting last contact time:", error);
       return null;
     }
+  }
+
+  /**
+   * Determine if clarification is needed based on contact results
+   */
+  private shouldRequestClarification(contacts: any[], query: string): {
+    needed: boolean;
+    reason?: string;
+    options?: any[];
+  } {
+    // No contacts found
+    if (contacts.length === 0) {
+      return {
+        needed: false,
+        reason: "No contacts found",
+      };
+    }
+
+    // Single contact with high confidence - no clarification needed
+    if (contacts.length === 1 && contacts[0].confidence >= 0.8) {
+      return {
+        needed: false,
+        reason: "Single high-confidence match",
+      };
+    }
+
+    // Multiple contacts with similar confidence scores
+    if (contacts.length > 1) {
+      const topTwo = contacts.slice(0, 2);
+      const confidenceDiff = topTwo[0].confidence - topTwo[1].confidence;
+      
+      // If top two contacts have similar confidence (within 0.2), ask for clarification
+      if (confidenceDiff < 0.2) {
+        return {
+          needed: true,
+          reason: "Multiple contacts with similar confidence scores",
+          options: contacts.slice(0, 5).map(contact => ({
+            id: contact.id,
+            title: contact.name,
+            subtitle: contact.email,
+            confidence: contact.confidence,
+            metadata: {
+              is_recent: contact.is_recent,
+              last_contact: contact.last_contact,
+            }
+          })),
+        };
+      }
+    }
+
+    // Single contact with low confidence
+    if (contacts.length === 1 && contacts[0].confidence < 0.6) {
+      return {
+        needed: true,
+        reason: "Low confidence match - user should confirm",
+        options: contacts.map(contact => ({
+          id: contact.id,
+          title: contact.name,
+          subtitle: contact.email,
+          confidence: contact.confidence,
+          metadata: {
+            is_recent: contact.is_recent,
+            last_contact: contact.last_contact,
+          }
+        })),
+      };
+    }
+
+    // Default: no clarification needed
+    return {
+      needed: false,
+      reason: "Clear best match found",
+    };
   }
 }
