@@ -80,6 +80,7 @@ export const createTestConversation = (overrides?: Partial<Conversation>): Conve
     },
   },
   lastMessage: {
+    id: 'last-msg-1',
     text: 'Last message text',
     senderId: 'user-1',
     timestamp: new Date('2025-01-15T10:00:00'),
