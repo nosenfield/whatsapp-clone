@@ -5,7 +5,7 @@
  * for various messaging scenarios.
  */
 
-import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command-service';
+import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command';
 
 // Example app context
 const exampleAppContext: EnhancedAppContext = {

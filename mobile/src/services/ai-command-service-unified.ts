@@ -1,3 +1,13 @@
+/**
+ * @deprecated This service is deprecated. Use EnhancedAICommandService from '../enhanced-ai-command' instead.
+ * This file will be removed in a future version.
+ * 
+ * Migration guide:
+ * - Replace: import { AICommandService } from './ai-command-service-unified'
+ * - With: import { EnhancedAICommandService } from './enhanced-ai-command'
+ * - Update method calls to use the new API
+ */
+
 import { QueryClient } from '@tanstack/react-query';
 import { MessageCommands } from '../commands/message-commands';
 import { ConversationCommands } from '../commands/conversation-commands';

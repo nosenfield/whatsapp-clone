@@ -1,3 +1,13 @@
+/**
+ * @deprecated This component is deprecated. Use the modular message-list/ directory instead.
+ * This file will be removed in a future version.
+ * 
+ * Migration guide:
+ * - Replace: import { MessageList } from './MessageList'
+ * - With: import { MessageList } from './message-list'
+ * - The new modular structure provides the same API with better organization
+ */
+
 import { FlatList, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MessageBubble } from './MessageBubble';

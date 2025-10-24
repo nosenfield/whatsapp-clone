@@ -1,3 +1,13 @@
+/**
+ * @deprecated This service is deprecated. Use the modular conversation-service/ directory instead.
+ * This file will be removed in a future version.
+ * 
+ * Migration guide:
+ * - Replace: import { ... } from './conversation-service'
+ * - With: import { ... } from './conversation-service'
+ * - The new modular structure provides the same API with better organization
+ */
+
 import { firestore } from '../../firebase.config';
 import {
   collection,

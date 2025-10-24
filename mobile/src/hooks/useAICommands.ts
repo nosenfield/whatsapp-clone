@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/auth-store';
-import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command-service';
+import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
 
 interface AICommandResult {

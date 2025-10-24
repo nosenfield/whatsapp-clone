@@ -1,3 +1,13 @@
+/**
+ * @deprecated This service is deprecated. Use EnhancedAICommandService from '../enhanced-ai-command' instead.
+ * This file will be removed in a future version.
+ * 
+ * Migration guide:
+ * - Replace: import { AICommandService } from './ai-command-service'
+ * - With: import { EnhancedAICommandService } from './enhanced-ai-command'
+ * - Update method calls to use the new API
+ */
+
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase.config';
 

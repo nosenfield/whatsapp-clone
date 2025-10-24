@@ -4,7 +4,7 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useMessageStore } from '../../src/store/message-store';
 import { MessageInput } from '../../src/components/MessageInput';
-import { MessageList } from '../../src/components/MessageList';
+import { MessageList } from '../../src/components/message-list';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { AICommandButton } from '../../src/components/AICommandButton';
 import { useAICommandContext } from '../../src/hooks/useAICommandContext';
