@@ -52,7 +52,7 @@ export const firestore = initializeFirestore(app, {
 
 export const realtimeDb = getDatabase(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, 'us-central1');
 
 // Log config status in development (without exposing sensitive values)
 if (__DEV__) {

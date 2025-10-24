@@ -10,16 +10,7 @@ import * as admin from "firebase-admin";
 import OpenAI from "openai";
 import {getOpenAIApiKey} from "../services/env-config";
 
-// Initialize OpenAI client
-let openai: OpenAI | null = null;
-try {
-  const openaiApiKey = getOpenAIApiKey();
-  openai = new OpenAI({
-    apiKey: openaiApiKey,
-  });
-} catch (error) {
-  logger.warn("OpenAI API key not available for calendar extraction");
-}
+// OpenAI client will be initialized at runtime when needed
 
 /**
  * Extract calendar events from new messages
@@ -28,7 +19,10 @@ try {
  * When: A new message document is created
  */
 export const extractCalendarEvents = onDocumentCreated(
-  "conversations/{conversationId}/messages/{messageId}",
+  {
+    document: "conversations/{conversationId}/messages/{messageId}",
+    secrets: ["OPENAI_API_KEY"]
+  },
   async (event) => {
     try {
       const messageId = event.params.messageId;
@@ -193,17 +187,29 @@ async function extractEventsWithAI(
     timestamp: any;
   }
 ): Promise<any[]> {
+  // Initialize OpenAI client at runtime when secrets are available
+  let openai: OpenAI | null = null;
+  try {
+    const openaiApiKey = getOpenAIApiKey();
+    openai = new OpenAI({
+      apiKey: openaiApiKey,
+    });
+  } catch (error) {
+    logger.warn("OpenAI API key not available for calendar extraction");
+    return [];
+  }
+
   logger.info("Starting AI extraction", {
     messageId: context.messageId,
     hasOpenAI: !!openai,
-    hasFirebaseConfig: !!process.env.OPENAI_API_KEY,
-    hasEnvVar: !!process.env.OPENAI_API_KEY,
-    apiKeySource: process.env.OPENAI_API_KEY ? "env-var" : "none",
+    hasFirebaseConfig: !!openai,
+    hasEnvVar: !!openai,
+    apiKeySource: openai ? "secret" : "none",
   });
 
   if (!openai) {
     logger.warn("OpenAI not initialized - skipping calendar extraction", {
-      hasAPIKey: !!process.env.OPENAI_API_KEY,
+      hasAPIKey: false,
     });
     return [];
   }

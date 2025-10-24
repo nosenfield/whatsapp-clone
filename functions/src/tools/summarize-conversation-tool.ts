@@ -9,6 +9,7 @@ import {BaseAITool, ToolParameter, ToolContext, ToolResult} from "./ai-tool-inte
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import OpenAI from "openai";
+import {getOpenAIApiKey} from "../services/env-config";
 
 export class SummarizeConversationTool extends BaseAITool {
   name = "summarize_conversation";
@@ -169,9 +170,9 @@ export class SummarizeConversationTool extends BaseAITool {
 
   private async generateSummary(messages: any[], summaryLength: string, userId: string): Promise<string> {
     try {
-      // Initialize OpenAI client
+      // Initialize OpenAI client using the environment config service
       const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: getOpenAIApiKey(),
       });
 
       // Format messages for AI processing

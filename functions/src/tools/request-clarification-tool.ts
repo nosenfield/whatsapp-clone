@@ -24,6 +24,9 @@ export class RequestClarificationTool extends BaseAITool {
       type: "array",
       description: "Array of options for user to choose from",
       required: true,
+      items: {
+        type: "string"
+      }
     },
     {
       name: "question",
@@ -72,20 +75,18 @@ export class RequestClarificationTool extends BaseAITool {
         };
       }
 
-      // Format options for display
-      const formattedOptions = options.map((option: any, index: number) => ({
-        id: option.id || `option_${index}`,
-        title: option.title || "Unknown",
-        subtitle: option.subtitle || "",
-        confidence: option.confidence || 0,
-        metadata: option.metadata || {},
-        display_text: `${option.title}${option.subtitle ? ` - ${option.subtitle}` : ''}${option.confidence ? ` (${Math.round(option.confidence * 100)}% match)` : ''}`,
+      // Format options for display (simplified string array)
+      const formattedOptions = options.map((option: string, index: number) => ({
+        id: `option_${index}`,
+        title: option,
+        subtitle: "",
+        confidence: 0.5, // Default confidence
+        metadata: {},
+        display_text: option,
       }));
 
-      // Determine the best default option (highest confidence)
-      const bestOption = formattedOptions.reduce((best: any, current: any) => 
-        (current.confidence > best.confidence) ? current : best
-      );
+      // Use first option as best option
+      const bestOption = formattedOptions[0] || { id: "option_0", title: "No options", confidence: 0 };
 
       const result = {
         clarification_type,

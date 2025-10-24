@@ -16,7 +16,10 @@ import {executeTool} from "./tool-executor";
  * This function handles natural language commands and executes appropriate tools
  */
 export const processAICommand = onCall(
-  {cors: true},
+  {
+    cors: true,
+    secrets: ["OPENAI_API_KEY", "LANGSMITH_API_KEY", "PINECONE_API_KEY"]
+  },
   async (request): Promise<AICommandResponse> => {
     try {
       const {command, appContext, currentUserId} = request.data as AICommandRequest;

@@ -54,7 +54,10 @@ interface EnhancedAICommandResponse {
  * Supports tool chaining and complex multi-step operations
  */
 export const processEnhancedAICommand = onCall(
-  {cors: true},
+  {
+    cors: true,
+    secrets: ["OPENAI_API_KEY", "LANGSMITH_API_KEY", "PINECONE_API_KEY"]
+  },
   async (request): Promise<EnhancedAICommandResponse> => {
     try {
       // Log environment status on first call
