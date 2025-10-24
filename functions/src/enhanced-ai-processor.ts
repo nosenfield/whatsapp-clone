@@ -170,6 +170,13 @@ async function parseCommandWithToolChain(
 
     // Get available tools and their definitions
     const availableTools = toolRegistry.getAllTools();
+    
+    // Debug logging
+    logger.info("Available tools for AI", {
+      toolCount: availableTools.length,
+      toolNames: availableTools.map((t) => t.name),
+    });
+    
     const toolDefinitions = availableTools.map((tool) => ({
       type: "function",
       function: {
@@ -234,20 +241,29 @@ Current context:
 - Current screen: ${appContext?.currentScreen || "unknown"}
 - Current conversation ID: ${appContext?.currentConversationId || "none"}
 
-IMPORTANT: When sending messages to people by name, you MUST first use lookup_contacts to find their user ID, then use send_message with the recipient_id.
+CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST ALWAYS use TWO tools in sequence:
 
-Examples of proper tool chaining:
-- "Tell John hello" → FIRST: lookup_contacts(query="John") THEN: send_message(content="hello", recipient_id="[from lookup_contacts result]")
-- "Say hello to Sarah" → FIRST: lookup_contacts(query="Sarah") THEN: send_message(content="hello", recipient_id="[from lookup_contacts result]")
-- "Find my conversation with Mike" → lookup_contacts(query="Mike") then resolve_conversation
+1. FIRST: lookup_contacts(query="[person's name]") to find their user ID
+2. SECOND: send_message(content="[message text]", recipient_id="[user_id from step 1]", sender_id="${appContext?.currentUserId || "unknown"}")
+
+EXAMPLES OF REQUIRED TOOL CHAINING:
+- "Tell John hello" → MUST call: lookup_contacts(query="John") THEN send_message(content="hello", recipient_id="[result from lookup_contacts]")
+- "Say hello to Sarah" → MUST call: lookup_contacts(query="Sarah") THEN send_message(content="hello", recipient_id="[result from lookup_contacts]")
+- "Tell George I'm working on something really important" → MUST call: lookup_contacts(query="George") THEN send_message(content="I'm working on something really important", recipient_id="[result from lookup_contacts]")
+
+IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop after just calling lookup_contacts. The user expects the message to actually be sent.
+
+TOOL CALLING FORMAT:
+When you need to call multiple tools, you must make multiple tool_calls in your response. For example:
+- For "Tell John hello", you must make TWO tool_calls: one for lookup_contacts and one for send_message
+- Do not try to combine them into a single call
+
+SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
+- "Find my conversation with Mike" → lookup_contacts(query="Mike") then resolve_conversation
 - "What messages do I have with Mike?" → lookup_contacts(query="Mike") then get_messages
 
-CRITICAL: For any "Tell [Name] [message]" or "Say [message] to [Name]" commands, you MUST:
-1. First call lookup_contacts to find the person
-2. Then call send_message with the recipient_id from step 1
-
-Always use the appropriate tools in the correct sequence to accomplish the user's request.`;
+IMPORTANT: You MUST call BOTH tools for message sending commands. Do not stop after just calling lookup_contacts. The user expects the message to actually be sent.`;
 
     let completion;
     try {
@@ -279,6 +295,16 @@ Always use the appropriate tools in the correct sequence to accomplish the user'
 
     const response = completion.choices[0];
     const toolCalls = response.message.tool_calls || [];
+
+    // Debug logging
+    logger.info("AI tool calls generated", {
+      toolCallsCount: toolCalls.length,
+      toolCalls: toolCalls.map((tc: any) => ({
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      })),
+      command: command.substring(0, 100),
+    });
 
     if (toolCalls.length === 0) {
       if (runTree) {
@@ -388,8 +414,20 @@ async function executeToolChain(
   const toolChainExecutor = new ToolChainExecutor(toolRegistry);
 
   try {
+    logger.info("Executing tool chain", {
+      toolChain: toolChain.map((tc) => ({ tool: tc.tool, parameters: tc.parameters })),
+      maxChainLength,
+      currentUserId,
+    });
+    
     const results = await toolChainExecutor.executeChain(toolChain, context);
     const executionTime = Date.now() - startTime;
+    
+    logger.info("Tool chain execution completed", {
+      resultsCount: results.length,
+      executionTime,
+      results: results.map((r) => ({ success: r.success, toolName: r.metadata?.toolName })),
+    });
 
     // Process results and generate final response
     const finalResult = processToolChainResults(results, toolChain);
