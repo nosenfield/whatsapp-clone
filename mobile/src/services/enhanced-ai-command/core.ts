@@ -17,11 +17,9 @@ import {
  */
 export class EnhancedAICommandCore {
   private processEnhancedAICommand: any;
-  private processAICommand: any;
 
   constructor() {
     this.processEnhancedAICommand = httpsCallable(functions, 'processEnhancedAICommand');
-    this.processAICommand = httpsCallable(functions, 'processAICommand');
   }
 
   /**
@@ -60,11 +58,9 @@ export class EnhancedAICommandCore {
       } else if (!response.success) {
         console.error('❌ Enhanced AI command failed:', response.error);
         
-        // Check if it's an OpenAI configuration error and fall back to simple parser
-        if (response.error && response.error.includes('AI service not configured')) {
-          console.log('🔄 Falling back to simple AI command parser...');
-          return await this.fallbackToSimpleParser(command, appContext);
-        }
+        // Don't fall back to simple parser to prevent duplicate message execution
+        // The enhanced processor should handle all cases or fail gracefully
+        console.log('🚫 Not falling back to simple parser to prevent duplicate messages');
       }
       
       return response;
@@ -94,49 +90,6 @@ export class EnhancedAICommandCore {
     });
   }
 
-  /**
-   * Fallback to simple AI command parser when enhanced version fails
-   */
-  private async fallbackToSimpleParser(
-    command: string,
-    appContext: EnhancedAppContext
-  ): Promise<EnhancedAICommandResponse> {
-    try {
-      console.log('🔄 Using simple AI command parser as fallback');
-      
-      const simpleRequest = {
-        command,
-        appContext: {
-          currentScreen: appContext.currentScreen,
-          currentConversationId: appContext.currentConversationId,
-          currentUserId: appContext.currentUserId,
-        },
-        currentUserId: appContext.currentUserId,
-      };
-
-      const result = await this.processAICommand(simpleRequest);
-      const response = result.data as any;
-      
-      // Convert simple response to enhanced response format
-      return {
-        success: response.success,
-        result: response.result,
-        response: response.response,
-        action: response.action as any,
-        error: response.error,
-        runId: response.runId,
-      };
-    } catch (error: any) {
-      console.error('❌ Fallback parser also failed:', error);
-      return {
-        success: false,
-        result: null,
-        response: 'Sorry, I encountered an error processing your command.',
-        action: 'show_error',
-        error: error.message || 'Unknown error',
-      };
-    }
-  }
 
   /**
    * Get default app context for a user
