@@ -5,7 +5,7 @@
  * Provides a unified interface for complex AI operations with tool chaining support.
  */
 
-import { EnhancedAppContext, EnhancedAICommandResponse } from './types';
+import { EnhancedAppContext, EnhancedAICommandResponse, ClarificationData, ClarificationOption } from './types';
 import { EnhancedAICommandCore } from './core';
 import { ConversationOperations } from './conversations';
 import { MessageOperations } from './messages';
@@ -160,6 +160,23 @@ export class EnhancedAICommandService {
     appContext: EnhancedAppContext
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     return this.conversations.getConversationInfo(params, appContext);
+  }
+
+  /**
+   * Continue a command after user provides clarification
+   */
+  async continueCommandWithClarification(
+    originalCommand: string,
+    clarificationData: ClarificationData,
+    userSelection: ClarificationOption,
+    appContext: EnhancedAppContext
+  ): Promise<EnhancedAICommandResponse> {
+    return this.core.continueCommandWithClarification(
+      originalCommand,
+      clarificationData,
+      userSelection,
+      appContext
+    );
   }
 
   /**

@@ -14,6 +14,12 @@ export interface EnhancedAppContext {
     platform: 'ios' | 'android';
     version: string;
   };
+  // Clarification response for command continuation
+  clarification_response?: {
+    clarification_type: string;
+    selected_option: ClarificationOption;
+    original_clarification_data: ClarificationData;
+  };
 }
 
 export interface EnhancedAICommandRequest {
@@ -28,7 +34,7 @@ export interface EnhancedAICommandResponse {
   success: boolean;
   result: any;
   response: string;
-  action: 'navigate_to_conversation' | 'show_summary' | 'show_error' | 'no_action' | 'tool_chain';
+  action: 'navigate_to_conversation' | 'show_summary' | 'show_error' | 'no_action' | 'tool_chain' | 'request_clarification';
   error?: string;
   runId?: string;
   toolChain?: {
@@ -36,6 +42,32 @@ export interface EnhancedAICommandResponse {
     results: any[];
     totalExecutionTime: number;
   };
+  // Clarification fields
+  requires_clarification?: boolean;
+  clarification_data?: ClarificationData;
+  original_command?: string;
+  command_context?: any;
+}
+
+// Clarification interfaces
+export interface ClarificationOption {
+  id: string;
+  title: string;
+  subtitle: string;
+  confidence: number;
+  metadata?: any;
+  display_text: string;
+}
+
+export interface ClarificationData {
+  clarification_type: string;
+  question: string;
+  context?: string;
+  options: ClarificationOption[];
+  best_option: ClarificationOption;
+  allow_cancel: boolean;
+  requires_user_input: true;
+  action: string;
 }
 
 // Tool-specific interfaces

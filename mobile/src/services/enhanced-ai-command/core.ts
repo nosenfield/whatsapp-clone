@@ -10,6 +10,8 @@ import {
   EnhancedAppContext,
   EnhancedAICommandRequest,
   EnhancedAICommandResponse,
+  ClarificationData,
+  ClarificationOption,
 } from './types';
 
 /**
@@ -90,6 +92,59 @@ export class EnhancedAICommandCore {
     });
   }
 
+
+  /**
+   * Continue a command after user provides clarification
+   */
+  async continueCommandWithClarification(
+    originalCommand: string,
+    clarificationData: ClarificationData,
+    userSelection: ClarificationOption,
+    appContext: EnhancedAppContext
+  ): Promise<EnhancedAICommandResponse> {
+    try {
+      console.log('🔄 Continuing command with clarification:', originalCommand.substring(0, 50) + '...');
+      console.log('📋 User selected:', userSelection.title);
+      
+      // Create continuation request with user selection
+      const continuationRequest: EnhancedAICommandRequest = {
+        command: originalCommand,
+        appContext: {
+          ...appContext,
+          clarification_response: {
+            clarification_type: clarificationData.clarification_type,
+            selected_option: userSelection,
+            original_clarification_data: clarificationData,
+          },
+        },
+        currentUserId: appContext.currentUserId,
+        enableToolChaining: true,
+        maxChainLength: 5,
+      };
+
+      const result = await this.processEnhancedAICommand(continuationRequest);
+      const response = result.data as EnhancedAICommandResponse;
+      
+      // Log successful continuation
+      if (response.success && response.runId) {
+        console.log('✅ Command continued successfully. LangSmith Run ID:', response.runId);
+        if (response.toolChain) {
+          console.log('🔗 Tool chain executed:', response.toolChain.toolsUsed.join(' → '));
+        }
+      }
+      
+      return response;
+    } catch (error: any) {
+      console.error('❌ Command continuation error:', error);
+      return {
+        success: false,
+        result: null,
+        response: 'Sorry, I encountered an error continuing your command.',
+        action: 'show_error',
+        error: error.message || 'Unknown error',
+      };
+    }
+  }
 
   /**
    * Get default app context for a user

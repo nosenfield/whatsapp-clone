@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/auth-store';
 import { enhancedAICommandService, EnhancedAppContext } from '../services/enhanced-ai-command';
+import { ClarificationData, ClarificationOption } from '../services/enhanced-ai-command/types';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
 
 interface AICommandResult {
@@ -11,6 +12,10 @@ interface AICommandResult {
     payload?: any;
   };
   runId?: string; // LangSmith run ID
+  // Clarification fields
+  requires_clarification?: boolean;
+  clarification_data?: ClarificationData;
+  original_command?: string;
 }
 
 export const useAICommands = (currentConversationId?: string, appContext?: any) => {
@@ -79,8 +84,43 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
       if (response.runId) {
         console.log('✅ LangSmith Run ID:', response.runId);
       }
+      
+      // Debug: Log full response structure
+      console.log('🔍 Full AI response:', JSON.stringify(response, null, 2));
 
       if (response.success) {
+        // Check if clarification is required
+        console.log('🔍 Checking for clarification:', {
+          action: response.action,
+          requires_clarification: response.requires_clarification,
+          clarification_data: response.clarification_data,
+          response: response.response
+        });
+        
+        // Check for clarification in multiple places
+        const isClarificationRequest = response.action === 'request_clarification' && 
+          (response.requires_clarification || 
+           response.clarification_data || 
+           (response.result && response.result.requires_user_input));
+        
+        if (isClarificationRequest) {
+          console.log('✅ Clarification detected, returning clarification data');
+          
+          // Extract clarification data from different possible locations
+          const clarificationData = response.clarification_data || 
+                                  response.result || 
+                                  (response.action && typeof response.action === 'object' && response.action.payload);
+          
+          return {
+            success: true,
+            message: response.response,
+            requires_clarification: true,
+            clarification_data: clarificationData,
+            original_command: command,
+            runId: response.runId,
+          };
+        }
+        
         return {
           success: true,
           message: response.response,
@@ -110,8 +150,89 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
     }
   };
 
+  const continueCommandWithClarification = async (
+    originalCommand: string,
+    clarificationData: ClarificationData,
+    userSelection: ClarificationOption
+  ): Promise<AICommandResult> => {
+    console.log('🔄 Continuing command with clarification:', originalCommand.substring(0, 50) + '...');
+    console.log('📋 User selected:', userSelection.title);
+    
+    if (!user) {
+      const authError = createUserFriendlyError({ code: 'NOT_AUTHENTICATED' });
+      return {
+        success: false,
+        message: authError.message
+      };
+    }
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      // Use the same context logic as executeCommand
+      const contextToUse: EnhancedAppContext = appContext ? {
+        currentScreen: appContext.currentScreen === 'ConversationList' ? 'chats' : 
+                      appContext.currentScreen === 'ConversationView' ? 'conversation' :
+                      appContext.currentScreen === 'Profile' ? 'profile' : 'settings',
+        currentConversationId: appContext.currentConversationId,
+        currentUserId: user.id,
+        recentConversations: [],
+        deviceInfo: {
+          platform: 'ios' as const,
+          version: '1.0.0',
+        },
+      } : {
+        currentScreen: currentConversationId ? 'conversation' : 'chats',
+        currentConversationId,
+        currentUserId: user.id,
+        recentConversations: [],
+        deviceInfo: {
+          platform: 'ios' as const,
+          version: '1.0.0',
+        },
+      };
+
+      const response = await enhancedAICommandService.continueCommandWithClarification(
+        originalCommand,
+        clarificationData,
+        userSelection,
+        contextToUse
+      );
+
+      if (response.success) {
+        return {
+          success: true,
+          message: response.response,
+          action: {
+            type: response.action === 'navigate_to_conversation' ? 'navigate' : 'toast',
+            payload: response.result,
+          },
+          runId: response.runId,
+        };
+      } else {
+        return {
+          success: false,
+          message: response.response || 'Command failed',
+        };
+      }
+    } catch (err: any) {
+      console.error('❌ Command continuation error:', err);
+      const friendlyError = createUserFriendlyError(err);
+      setError(friendlyError.message);
+      
+      return {
+        success: false,
+        message: friendlyError.message
+      };
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return {
     executeCommand,
+    continueCommandWithClarification,
     isProcessing,
     error
   };

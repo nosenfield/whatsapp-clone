@@ -27,6 +27,19 @@ interface EnhancedAICommandRequest {
       platform: "ios" | "android";
       version: string;
     };
+    // Clarification response for command continuation
+    clarification_response?: {
+      clarification_type: string;
+      selected_option: {
+        id: string;
+        title: string;
+        subtitle: string;
+        confidence: number;
+        metadata?: any;
+        display_text: string;
+      };
+      original_clarification_data: any;
+    };
   };
   currentUserId: string;
   enableToolChaining?: boolean;
@@ -38,7 +51,7 @@ interface EnhancedAICommandResponse {
   success: boolean;
   result: any;
   response: string;
-  action: "navigate_to_conversation" | "show_summary" | "show_error" | "no_action" | "tool_chain";
+  action: "navigate_to_conversation" | "show_summary" | "show_error" | "no_action" | "tool_chain" | "request_clarification";
   error?: string;
   runId?: string;
   toolChain?: {
@@ -46,6 +59,10 @@ interface EnhancedAICommandResponse {
     results: any[];
     totalExecutionTime: number;
   };
+  // Clarification fields
+  requires_clarification?: boolean;
+  clarification_data?: any;
+  original_command?: string;
 }
 
 /**
@@ -139,6 +156,9 @@ export const processEnhancedAICommand = onCall(
           action: toolChainResult.action,
           runId: parsedCommand.runId,
           toolChain: toolChainResult.toolChain,
+          // Include clarification fields if present
+          requires_clarification: toolChainResult.requires_clarification,
+          clarification_data: toolChainResult.clarification_data,
         };
       } else if (parsedCommand.toolChain && parsedCommand.toolChain.length === 1) {
         // Single tool execution
@@ -283,6 +303,10 @@ Current context:
 - User ID: ${appContext?.currentUserId || "unknown"}
 - Current screen: ${appContext?.currentScreen || "unknown"}
 - Current conversation ID: ${appContext?.currentConversationId || "none"}
+${appContext?.clarification_response ? `
+- CLARIFICATION RESPONSE PROVIDED: User has selected "${appContext.clarification_response.selected_option.title}" for ${appContext.clarification_response.clarification_type}
+- Use this selection to continue the original command
+` : ''}
 
 CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST use this exact sequence:
 
@@ -306,6 +330,10 @@ IMPORTANT:
 - Use the contact ID from the first lookup_contacts result to call send_message
 - The user expects the message to actually be sent
 - ALWAYS respect clarification requests - do not guess which contact the user meant
+${appContext?.clarification_response ? `
+- USER CLARIFICATION PROVIDED: Proceed with the original command using the user's selection
+- Extract the user ID from the selected option's metadata or use the option ID directly
+` : ''}
 
 SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
@@ -706,6 +734,15 @@ async function executeToolChain(
     // Process results and generate final response
     const finalResult = processToolChainResults(results, toolChain);
 
+    // Debug logging for clarification
+    logger.info("🔍 Tool chain final result:", {
+      success: finalResult.success,
+      action: finalResult.action,
+      requires_clarification: finalResult.requires_clarification,
+      clarification_data: finalResult.clarification_data,
+      data: finalResult.data,
+    });
+
     return {
       success: finalResult.success,
       result: finalResult.data,
@@ -716,6 +753,9 @@ async function executeToolChain(
         results: results,
         totalExecutionTime: executionTime,
       },
+      // Include clarification fields if present
+      requires_clarification: finalResult.requires_clarification,
+      clarification_data: finalResult.clarification_data,
     };
   } catch (error) {
     logger.error("Error executing tool chain:", error);
@@ -745,6 +785,19 @@ function processToolChainResults(results: any[], toolChain: any[]): any {
       data: null,
       response: `Command failed: ${failedTools[0].error}`,
       action: "show_error",
+    };
+  }
+
+  // Check if clarification was requested
+  const clarificationResult = results.find(r => r.toolName === "request_clarification");
+  if (clarificationResult?.success && clarificationResult.data?.requires_user_input) {
+    return {
+      success: true,
+      data: clarificationResult.data,
+      response: generateChainResponse(results, toolChain),
+      action: "request_clarification",
+      requires_clarification: true,
+      clarification_data: clarificationResult.data,
     };
   }
 
