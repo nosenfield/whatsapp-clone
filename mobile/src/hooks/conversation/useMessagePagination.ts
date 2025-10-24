@@ -21,7 +21,7 @@ export const useMessagePagination = ({
   const [currentOffset, setCurrentOffset] = useState(initialOffset);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
 
-  const loadMoreMessages = async (onMessagesUpdate: (messages: Message[]) => void) => {
+  const loadMoreMessages = async (onMessagesUpdate: (updater: (prev: Message[]) => Message[]) => void) => {
     if (!conversationId || isLoadingMore) return;
     
     setIsLoadingMore(true);
