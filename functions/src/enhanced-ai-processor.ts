@@ -12,6 +12,7 @@ import {ToolChainExecutor, ToolContext, ToolChainContext} from "./tools/ai-tool-
 import {ToolChainParameterMapper} from "./tools/tool-chain-mapper";
 import {ToolChainValidator} from "./tools/tool-chain-validator";
 import {initializeLangSmith} from "./services/langsmith-config";
+import {getOpenAIApiKey, logEnvironmentStatus} from "./services/env-config";
 import {RunTree} from "langsmith";
 
 // Enhanced command request interface
@@ -56,6 +57,9 @@ export const processEnhancedAICommand = onCall(
   {cors: true},
   async (request): Promise<EnhancedAICommandResponse> => {
     try {
+      // Log environment status on first call
+      logEnvironmentStatus();
+      
       const {command, appContext, currentUserId, enableToolChaining = true, maxChainLength = 5} = request.data as EnhancedAICommandRequest;
 
       // Validate request
@@ -247,8 +251,10 @@ async function parseCommandWithToolChain(
     const openai = require("openai");
     
     // Check if OpenAI API key is available
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey || openaiApiKey === "your-openai-api-key-here") {
+    let openaiApiKey: string;
+    try {
+      openaiApiKey = getOpenAIApiKey();
+    } catch (error) {
       logger.warn("OpenAI API key not available, falling back to simple parsing");
       
       if (runTree) {

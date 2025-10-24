@@ -5,6 +5,7 @@
  */
 
 import {Client} from "langsmith";
+import {getLangSmithApiKey, getLangSmithEndpoint} from "./env-config";
 
 // Initialize LangSmith client
 let langsmithClient: Client | null = null;
@@ -15,9 +16,7 @@ let langsmithClient: Client | null = null;
 export function initializeLangSmith(): Client | null {
   try {
     // Check if LangSmith API key is available
-    const apiKey = process.env.LANGSMITH_API_KEY ||
-                   process.env.LANGSMITH_API_KEY || // Firebase Functions config
-                   null;
+    const apiKey = getLangSmithApiKey();
 
     if (!apiKey) {
       console.warn("LangSmith API key not found. LangSmith logging disabled.");
@@ -27,7 +26,7 @@ export function initializeLangSmith(): Client | null {
     // Initialize LangSmith client
     langsmithClient = new Client({
       apiKey: apiKey,
-      apiUrl: process.env.LANGSMITH_ENDPOINT || "https://api.smith.langchain.com",
+      apiUrl: getLangSmithEndpoint(),
     });
 
     console.log("✅ LangSmith client initialized successfully");

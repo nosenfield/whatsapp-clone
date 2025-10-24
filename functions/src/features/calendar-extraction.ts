@@ -8,14 +8,17 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import OpenAI from "openai";
+import {getOpenAIApiKey} from "../services/env-config";
 
 // Initialize OpenAI client
 let openai: OpenAI | null = null;
-const openaiApiKey = process.env.OPENAI_API_KEY;
-if (openaiApiKey) {
+try {
+  const openaiApiKey = getOpenAIApiKey();
   openai = new OpenAI({
     apiKey: openaiApiKey,
   });
+} catch (error) {
+  logger.warn("OpenAI API key not available for calendar extraction");
 }
 
 /**

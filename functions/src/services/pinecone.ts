@@ -6,6 +6,7 @@
 
 import {Pinecone} from "@pinecone-database/pinecone";
 import * as logger from "firebase-functions/logger";
+import {getPineconeApiKey} from "./env-config";
 
 let pinecone: Pinecone | null = null;
 
@@ -15,7 +16,7 @@ let pinecone: Pinecone | null = null;
  */
 function initializePinecone(): Pinecone {
   if (!pinecone) {
-    const apiKey = process.env.PINECONE_API_KEY;
+    const apiKey = getPineconeApiKey();
     if (!apiKey) {
       throw new Error("PINECONE_API_KEY environment variable is required");
     }

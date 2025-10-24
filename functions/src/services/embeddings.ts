@@ -6,6 +6,7 @@
 
 import OpenAI from "openai";
 import * as logger from "firebase-functions/logger";
+import {getOpenAIApiKey} from "./env-config";
 
 let openai: OpenAI | null = null;
 
@@ -15,11 +16,7 @@ let openai: OpenAI | null = null;
  */
 function initializeOpenAI(): OpenAI {
   if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
-    }
-
+    const apiKey = getOpenAIApiKey();
     openai = new OpenAI({
       apiKey,
     });
