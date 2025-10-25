@@ -10,7 +10,10 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test:langsmith": "ts-node test-langsmith.ts",
-    "test:simple": "ts-node simple-test.ts"
+    "test:simple": "ts-node simple-test.ts",
+    "test:ai-tools": "node tests/ai-tool-consistency/comprehensive-test.js",
+    "test:ai-tools:simple": "node tests/ai-tool-consistency/simple-test.js",
+    "test:ai-tools:full": "node tests/ai-tool-consistency/test-ai-tool-consistency.js"
   },
   "engines": {
     "node": "20"
