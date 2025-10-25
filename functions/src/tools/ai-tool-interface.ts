@@ -175,9 +175,38 @@ export abstract class BaseAITool implements AITool {
   }
 
   protected async createConversation(participants: string[], name?: string): Promise<any> {
+    // Get participant details
+    const participantDetails: Record<string, { displayName: string; photoURL?: string }> = {};
+    
+    for (const userId of participants) {
+      try {
+        const userDoc = await admin.firestore().collection("users").doc(userId).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          participantDetails[userId] = {
+            displayName: userData?.displayName || 'Unknown',
+            photoURL: userData?.photoURL || undefined,
+          };
+        } else {
+          // Fallback for missing user data
+          participantDetails[userId] = {
+            displayName: 'Unknown',
+            photoURL: undefined,
+          };
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch user details for ${userId}:`, error);
+        participantDetails[userId] = {
+          displayName: 'Unknown',
+          photoURL: undefined,
+        };
+      }
+    }
+
     const conversationData: any = {
       type: participants.length === 2 ? "direct" : "group",
       participants,
+      participantDetails,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };

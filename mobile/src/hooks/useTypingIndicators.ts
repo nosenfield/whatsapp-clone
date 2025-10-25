@@ -2,6 +2,19 @@ import { useState, useEffect } from 'react';
 import { subscribeToTyping } from '../services/firebase-rtdb';
 
 /**
+ * Sanitize user ID for Firebase Realtime Database paths
+ * This should match the function in firebase-rtdb.ts
+ */
+const sanitizeUserIdForRTDB = (userId: string): string => {
+  if (!userId) {
+    throw new Error('User ID cannot be empty');
+  }
+  
+  // Replace invalid characters with underscores
+  return userId.replace(/[.#$[\]]/g, '_');
+};
+
+/**
  * Hook to subscribe to typing indicators in a conversation
  * @param conversationId - The conversation ID to monitor
  * @param currentUserId - Current user's ID (to filter out own typing)
@@ -19,12 +32,17 @@ export const useTypingIndicators = (
     console.log('⌨️ Subscribing to typing indicators for conversation:', conversationId);
 
     const unsubscribe = subscribeToTyping(conversationId, (typingUsersMap) => {
+      // Convert sanitized user IDs back to original user IDs
+      // For now, we'll use the sanitized IDs directly since the mapping is complex
+      // In a production system, you might want to maintain a mapping
+      const sanitizedCurrentUserId = sanitizeUserIdForRTDB(currentUserId);
+      
       // Filter out current user and convert to array
       const userIds = Object.keys(typingUsersMap).filter(
-        (userId) => userId !== currentUserId && typingUsersMap[userId]
+        (sanitizedUserId) => sanitizedUserId !== sanitizedCurrentUserId && typingUsersMap[sanitizedUserId]
       );
 
-      console.log('⌨️ Typing users:', userIds);
+      console.log('⌨️ Typing users (sanitized IDs):', userIds);
       setTypingUsers(userIds);
     });
 

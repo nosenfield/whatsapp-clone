@@ -9,12 +9,27 @@ import {
 } from 'firebase/database';
 import { Presence } from '../types';
 
+/**
+ * Sanitize user ID for Firebase Realtime Database paths
+ * Firebase RTDB paths cannot contain ".", "#", "$", "[", or "]"
+ * This function replaces invalid characters with underscores
+ */
+const sanitizeUserIdForRTDB = (userId: string): string => {
+  if (!userId) {
+    throw new Error('User ID cannot be empty');
+  }
+  
+  // Replace invalid characters with underscores
+  return userId.replace(/[.#$[\]]/g, '_');
+};
+
 // Initialize presence system for a user
 // This should be called once on app launch after authentication
 export const initializePresence = async (userId: string): Promise<void> => {
   console.log('🟢 Initializing presence for user:', userId);
   
-  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const sanitizedUserId = sanitizeUserIdForRTDB(userId);
+  const presenceRef = ref(realtimeDb, `presence/${sanitizedUserId}`);
   const connectionRef = ref(realtimeDb, '.info/connected');
   
   // Monitor connection state
@@ -41,7 +56,8 @@ export const initializePresence = async (userId: string): Promise<void> => {
 
 // Manually set presence (for app backgrounding/foregrounding)
 export const setPresence = async (userId: string, online: boolean): Promise<void> => {
-  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const sanitizedUserId = sanitizeUserIdForRTDB(userId);
+  const presenceRef = ref(realtimeDb, `presence/${sanitizedUserId}`);
   
   await set(presenceRef, {
     online,
@@ -62,7 +78,8 @@ export const subscribeToPresence = (
   userId: string,
   callback: (presence: Presence) => void
 ): (() => void) => {
-  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const sanitizedUserId = sanitizeUserIdForRTDB(userId);
+  const presenceRef = ref(realtimeDb, `presence/${sanitizedUserId}`);
   
   return onValue(presenceRef, (snapshot) => {
     if (snapshot.exists()) {
@@ -83,7 +100,8 @@ export const subscribeToPresence = (
 
 // Get presence once (no subscription)
 export const getPresence = async (userId: string): Promise<Presence> => {
-  const presenceRef = ref(realtimeDb, `presence/${userId}`);
+  const sanitizedUserId = sanitizeUserIdForRTDB(userId);
+  const presenceRef = ref(realtimeDb, `presence/${sanitizedUserId}`);
   const snapshot = await get(presenceRef);
   
   if (snapshot.exists()) {
@@ -117,7 +135,8 @@ export const setTyping = async (
   userId: string,
   isTyping: boolean
 ): Promise<void> => {
-  const typingRef = ref(realtimeDb, `typing/${conversationId}/${userId}`);
+  const sanitizedUserId = sanitizeUserIdForRTDB(userId);
+  const typingRef = ref(realtimeDb, `typing/${conversationId}/${sanitizedUserId}`);
   
   if (isTyping) {
     await set(typingRef, {
@@ -142,9 +161,11 @@ export const subscribeToTyping = (
       
       // Filter out stale typing indicators (older than 5 seconds)
       const now = Date.now();
-      Object.entries(data).forEach(([userId, value]: [string, any]) => {
+      Object.entries(data).forEach(([sanitizedUserId, value]: [string, any]) => {
         if (value.isTyping && now - value.timestamp < 5000) {
-          typingUsers[userId] = true;
+          // Note: We're using sanitized user IDs as keys here
+          // The calling code should handle the mapping if needed
+          typingUsers[sanitizedUserId] = true;
         }
       });
       

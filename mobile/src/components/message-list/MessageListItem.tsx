@@ -47,7 +47,7 @@ export const MessageListItem: React.FC<MessageListItemProps> = ({
 
   // Get user details for read receipts
   const readReceiptUsers = usersWhoRead.map(receipt => {
-    const participantDetails = conversation?.participantDetails[receipt.userId];
+    const participantDetails = conversation?.participantDetails?.[receipt.userId];
     return {
       userId: receipt.userId,
       user: {

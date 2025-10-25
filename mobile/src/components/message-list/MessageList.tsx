@@ -5,10 +5,9 @@
  */
 
 import React from 'react';
-import { FlatList, StyleSheet } from 'react-native';
+import { FlatList, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Message, Conversation } from '../../types';
 import { MessageListItem } from './MessageListItem';
-import { LoadMoreButton } from './LoadMoreButton';
 import { EmptyState } from './EmptyState';
 
 interface MessageListProps {
@@ -45,13 +44,32 @@ export const MessageList: React.FC<MessageListProps> = ({
     />
   );
 
-  const renderLoadMoreButton = () => (
-    <LoadMoreButton
-      hasNextPage={hasNextPage}
-      isFetchingNextPage={isFetchingNextPage}
-      onPress={fetchNextPage || (() => {})}
-    />
-  );
+  // Simple load more button component inline to avoid import issues
+  const renderLoadMoreButton = () => {
+    if (!hasNextPage) return null;
+    
+    return (
+      <View style={{ padding: 16, alignItems: 'center' }}>
+        {isFetchingNextPage ? (
+          <ActivityIndicator size="small" color="#007AFF" />
+        ) : (
+          <TouchableOpacity
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 16,
+              backgroundColor: '#F2F2F7',
+              borderRadius: 20,
+            }}
+            onPress={fetchNextPage || (() => {})}
+          >
+            <Text style={{ fontSize: 14, color: '#007AFF', fontWeight: '600' }}>
+              Load more messages
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   return (
     <FlatList
