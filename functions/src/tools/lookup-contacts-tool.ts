@@ -148,24 +148,74 @@ export class LookupContactsTool extends BaseAITool {
         }))
       });
 
-      const result = {
-        contacts: contacts,
-        total_found: filteredResults.length,
-        query: query,
-        search_criteria: {
-          fields_searched: search_fields,
-          min_confidence: min_confidence,
-          include_recent: include_recent,
-        },
-        needs_clarification: needsClarification.needed,
-        clarification_reason: needsClarification.reason,
-        clarification_options: needsClarification.options,
-      };
+      // Return standardized format based on scenario
+      if (contacts.length === 0) {
+        return {
+          success: false,
+          data: { 
+            query, 
+            contacts: [],
+            total_found: 0 
+          },
+          next_action: "error",
+          error: `No contacts found matching "${query}"`,
+          instruction_for_ai: "Inform user no contacts were found.",
+          confidence: 0,
+          metadata: {
+            contactsFound: 0,
+            recentContactsIncluded: recentContacts.length,
+            searchFieldsUsed: search_fields,
+          },
+        };
+      }
 
+      if (needsClarification.needed) {
+        return {
+          success: true,
+          data: { 
+            query, 
+            contacts,
+            total_found: contacts.length,
+            search_criteria: {
+              fields_searched: search_fields,
+              min_confidence: min_confidence,
+              include_recent: include_recent,
+            }
+          },
+          next_action: "clarification_needed",
+          clarification: {
+            type: "contact_selection",
+            question: `I found ${contacts.length} contacts named "${query}". Which one did you mean?`,
+            options: needsClarification.options || []
+          },
+          instruction_for_ai: "STOP: Present these options to user and wait for their selection. Do NOT call any more tools.",
+          confidence: Math.max(...filteredResults.map((r) => r.confidence)),
+          metadata: {
+            contactsFound: contacts.length,
+            recentContactsIncluded: recentContacts.length,
+            searchFieldsUsed: search_fields,
+          },
+        };
+      }
+
+      // Clear match - continue
       return {
         success: true,
-        data: result,
-        confidence: filteredResults.length > 0 ? Math.max(...filteredResults.map((r) => r.confidence)) : 0,
+        data: {
+          query,
+          contacts,
+          total_found: contacts.length,
+          contact_id: contacts[0].id,  // Selected contact ID
+          contact_name: contacts[0].name,
+          search_criteria: {
+            fields_searched: search_fields,
+            min_confidence: min_confidence,
+            include_recent: include_recent,
+          }
+        },
+        next_action: "continue",
+        instruction_for_ai: `Use contact_id "${contacts[0].id}" for the next tool call.`,
+        confidence: Math.max(...filteredResults.map((r) => r.confidence)),
         metadata: {
           contactsFound: contacts.length,
           recentContactsIncluded: recentContacts.length,
@@ -176,7 +226,10 @@ export class LookupContactsTool extends BaseAITool {
       logger.error("Error looking up contacts:", error);
       return {
         success: false,
+        data: {},
+        next_action: "error",
         error: error instanceof Error ? error.message : "Unknown error",
+        instruction_for_ai: "Inform user that contact search failed.",
         confidence: 0,
       };
     }

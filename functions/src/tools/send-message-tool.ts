@@ -112,7 +112,10 @@ export class SendMessageTool extends BaseAITool {
         } else {
           return {
             success: false,
+            data: {},
+            next_action: "error",
             error: "Conversation not found and creation not allowed",
+            instruction_for_ai: "Inform user that conversation could not be created.",
             confidence: 0,
           };
         }
@@ -121,7 +124,10 @@ export class SendMessageTool extends BaseAITool {
       if (!conversationId) {
         return {
           success: false,
+          data: {},
+          next_action: "error",
           error: "No conversation ID provided and no recipient specified",
+          instruction_for_ai: "Inform user that recipient is required.",
           confidence: 0,
         };
       }
@@ -131,7 +137,10 @@ export class SendMessageTool extends BaseAITool {
       if (!accessCheck.hasAccess) {
         return {
           success: false,
+          data: {},
+          next_action: "error",
           error: accessCheck.error || "Access denied",
+          instruction_for_ai: "Inform user that access was denied.",
           confidence: 0,
         };
       }
@@ -184,6 +193,8 @@ export class SendMessageTool extends BaseAITool {
       return {
         success: true,
         data: result,
+        next_action: "complete",
+        instruction_for_ai: "Message sent successfully. No further action needed.",
         confidence: 0.95,
         metadata: {
           messageType: message_type,
@@ -196,7 +207,10 @@ export class SendMessageTool extends BaseAITool {
       logger.error("Error sending message:", error);
       return {
         success: false,
+        data: {},
+        next_action: "error",
         error: error instanceof Error ? error.message : "Unknown error",
+        instruction_for_ai: "Inform user that message sending failed.",
         confidence: 0,
       };
     }

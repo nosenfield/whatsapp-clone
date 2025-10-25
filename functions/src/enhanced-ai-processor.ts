@@ -145,8 +145,8 @@ export const processEnhancedAICommand = onCall(
         }
       }
 
-      // Execute tool chain if multiple tools are needed
-      if (parsedCommand.toolChain && parsedCommand.toolChain.length > 1) {
+      // Execute tool chain (always use ToolChainExecutor for consistent behavior)
+      if (parsedCommand.toolChain && parsedCommand.toolChain.length > 0) {
         const toolChainResult = await executeToolChain(parsedCommand.toolChain, currentUserId, appContext, maxChainLength);
 
         return {
@@ -159,17 +159,6 @@ export const processEnhancedAICommand = onCall(
           // Include clarification fields if present
           requires_clarification: toolChainResult.requires_clarification,
           clarification_data: toolChainResult.clarification_data,
-        };
-      } else if (parsedCommand.toolChain && parsedCommand.toolChain.length === 1) {
-        // Single tool execution
-        const toolResult = await executeSingleTool(parsedCommand.toolChain[0], currentUserId, appContext);
-
-        return {
-          success: toolResult.success,
-          result: toolResult.result,
-          response: toolResult.response,
-          action: toolResult.action,
-          runId: parsedCommand.runId,
         };
       } else {
         return {
@@ -297,43 +286,65 @@ async function parseCommandWithToolChain(
       apiKey: openaiApiKey,
     });
 
-    const systemPrompt = `You are an AI assistant for a WhatsApp-like messaging app. You have access to several tools to help users with messaging tasks.
+    const systemPrompt = `You are an AI assistant for a messaging app.
 
-Current context:
-- User ID: ${appContext?.currentUserId || "unknown"}
-- Current screen: ${appContext?.currentScreen || "unknown"}
-- Current conversation ID: ${appContext?.currentConversationId || "none"}
-${appContext?.clarification_response ? `
-- CLARIFICATION RESPONSE PROVIDED: User has selected "${appContext.clarification_response.selected_option.title}" for ${appContext.clarification_response.clarification_type}
-- Use this selection to continue the original command
-` : ''}
+TOOL CHAINING RULES:
 
-CRITICAL RULE: For ANY command that involves sending a message to someone by name, you MUST use this exact sequence:
+1. For "send message to [name]" commands:
+   ${appContext?.clarification_response ? `
+   - User has selected contact: "${appContext.clarification_response.selected_option.title}"
+   - Contact ID: ${appContext.clarification_response.selected_option.id}
+   - Action: Call send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="[message]", sender_id="${appContext?.currentUserId || "unknown"}")
+   ` : `
+   - Step 1: Call lookup_contacts(query="[name]", user_id="${appContext?.currentUserId || "unknown"}")
+   - Step 2: Check tool result's next_action field:
+     * If "clarification_needed": STOP - system will present options automatically
+     * If "continue": Use contact_id from result.data for next tool
+     * If "error": Inform user of the error
+   - Step 3 (only if step 2 was "continue"): Call send_message(recipient_id="[contact_id]", content="[message]", sender_id="${appContext?.currentUserId || "unknown"}")
+   `}
 
-1. FIRST: Call lookup_contacts(query="[person's name]") to find their user ID
-2. CHECK: If lookup_contacts returns needs_clarification=true, you MUST call request_clarification tool BEFORE proceeding
-3. SECOND: Use the results from step 1 (or user selection from clarification) to call send_message(content="[message text]", recipient_id="[user_id from lookup_contacts result]", sender_id="${appContext?.currentUserId || "unknown"}")
+CRITICAL RULES:
+- ALWAYS check result.next_action after EACH tool call
+- If next_action is "clarification_needed", do NOT call any more tools
+- Trust the tool's next_action field completely
+- Use contact_id from result.data, never make up IDs
 
-EXAMPLES OF REQUIRED TOOL CHAINING:
-- "Tell John hello" → FIRST: lookup_contacts(query="John") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
-- "Say hello to Sarah" → FIRST: lookup_contacts(query="Sarah") THEN: send_message(content="hello", recipient_id="[result from lookup_contacts]")
-- "Tell George I'm working on something really important" → FIRST: lookup_contacts(query="George") THEN: send_message(content="I'm working on something really important", recipient_id="[result from lookup_contacts]")
+EXAMPLE FLOWS:
 
-CLARIFICATION HANDLING:
-- If lookup_contacts returns needs_clarification=true, you MUST call request_clarification tool
-- Do NOT proceed with send_message until user provides clarification
-- Use the clarification_options from lookup_contacts result for the request_clarification tool
+Example 1 - Needs Clarification:
+User: "Tell John I'm running late"
+You call: lookup_contacts(query="John", user_id="${appContext?.currentUserId || "unknown"}")
+Result: {
+  "success": true,
+  "data": {"contacts": [...]},
+  "next_action": "clarification_needed",
+  "clarification": {
+    "type": "contact_selection",
+    "question": "I found 3 contacts named John. Which one?",
+    "options": [...]
+  }
+}
+Action: STOP - do not call send_message
 
-IMPORTANT: 
-- You MUST call BOTH tools for message sending commands (unless clarification is needed)
-- Do not call lookup_contacts twice
-- Use the contact ID from the first lookup_contacts result to call send_message
-- The user expects the message to actually be sent
-- ALWAYS respect clarification requests - do not guess which contact the user meant
-${appContext?.clarification_response ? `
-- USER CLARIFICATION PROVIDED: Proceed with the original command using the user's selection
-- Extract the user ID from the selected option's metadata or use the option ID directly
-` : ''}
+Example 2 - Clear Match:
+User: "Tell Jane hello"  
+You call: lookup_contacts(query="Jane", user_id="${appContext?.currentUserId || "unknown"}")
+Result: {
+  "success": true,
+  "data": {"contact_id": "user_abc123", "contact_name": "Jane Smith"},
+  "next_action": "continue"
+}
+You call: send_message(recipient_id="user_abc123", content="hello", sender_id="${appContext?.currentUserId || "unknown"}")
+Result: {"success": true, "next_action": "complete"}
+Done!
+
+Example 3 - After Clarification:
+User: "Tell John I'm running late" (user previously selected John from clarification)
+Context: User selected "John Doe (john.doe@example.com)" with ID "user_xyz789"
+You call: send_message(recipient_id="user_xyz789", content="I'm running late", sender_id="${appContext?.currentUserId || "unknown"}")
+Result: {"success": true, "next_action": "complete"}
+Done!
 
 SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
@@ -396,20 +407,39 @@ When you see tool results, analyze them carefully and decide what to do next bas
         break;
       }
 
+      // Validation: Don't allow chaining after tools that might need clarification
+      const validatedToolCalls = [];
+      for (let i = 0; i < toolCalls.length; i++) {
+        const currentTool = toolCalls[i];
+        validatedToolCalls.push(currentTool);
+        
+        // If this tool might need clarification, don't include subsequent tools
+        if (["lookup_contacts", "search_conversations"].includes(currentTool.function.name)) {
+          logger.info(`Tool ${currentTool.function.name} might need clarification, stopping chain here`, {
+            originalChainLength: toolCalls.length,
+            validatedChainLength: validatedToolCalls.length
+          });
+          break; // Only execute up to this tool
+        }
+      }
+
+      // Use validatedToolCalls instead of toolCalls
+      const finalToolCalls = validatedToolCalls;
+
       // Add assistant message with tool calls to conversation
       messages.push(response.message);
 
       // Execute tools and add results to conversation
       const toolResults: any[] = [];
       
-      for (let i = 0; i < toolCalls.length; i++) {
-        const toolCall = toolCalls[i];
+      for (let i = 0; i < finalToolCalls.length; i++) {
+        const toolCall = finalToolCalls[i];
         const toolName = toolCall.function.name;
         let parameters = JSON.parse(toolCall.function.arguments);
         
         // Apply parameter mapping from previous tool if available
         if (i > 0 && toolResults.length > 0) {
-          const previousToolCall = toolCalls[i - 1];
+          const previousToolCall = finalToolCalls[i - 1];
           const previousToolName = previousToolCall.function.name;
           const previousResult = toolResults[i - 1];
           
@@ -452,127 +482,17 @@ When you see tool results, analyze them carefully and decide what to do next bas
               // Store result for parameter mapping
               toolResults.push(result);
               
-              // Add tool result to messages with clear formatting
-              let toolResultContent;
-              if (toolName === "lookup_contacts" && result.success && result.data?.contacts) {
-                // Format lookup_contacts results clearly for the AI
-                const contacts = result.data.contacts;
-                const needsClarification = result.data.needs_clarification;
-                const clarificationReason = result.data.clarification_reason;
-                const clarificationOptions = result.data.clarification_options;
-                
-                // Comprehensive logging for debugging
-                logger.info("🔍 AI Processor handling lookup_contacts result", {
-                  query: parameters.query,
-                  contactsFound: contacts.length,
-                  needsClarification: needsClarification,
-                  clarificationReason: clarificationReason,
-                  clarificationOptionsCount: clarificationOptions?.length || 0,
-                  contacts: contacts.map((c: any) => ({
-                    id: c.id,
-                    name: c.name,
-                    email: c.email,
-                    confidence: c.confidence,
-                    is_recent: c.is_recent
-                  })),
-                  clarificationOptions: clarificationOptions?.map((opt: any) => ({
-                    id: opt.id,
-                    title: opt.title,
-                    subtitle: opt.subtitle,
-                    confidence: opt.confidence
-                  })),
-                  fullResultData: {
-                    total_found: result.data.total_found,
-                    search_criteria: result.data.search_criteria,
-                    needs_clarification: result.data.needs_clarification,
-                    clarification_reason: result.data.clarification_reason
-                  }
-                });
-                
-                if (contacts.length === 0) {
-                  toolResultContent = JSON.stringify({
-                    success: false,
-                    tool: "lookup_contacts",
-                    error: `No contacts found matching "${parameters.query}"`,
-                    suggestion: "Try a different name or check spelling"
-                  });
-                } else if (needsClarification) {
-                  // Clarification needed - instruct AI to call request_clarification tool
-                  toolResultContent = JSON.stringify({
-                    success: true,
-                    tool: "lookup_contacts",
-                    contacts_found: contacts.map((c: any) => ({
-                      user_id: c.id,
-                      name: c.name,
-                      email: c.email,
-                      confidence: c.confidence
-                    })),
-                    needs_clarification: true,
-                    clarification_reason: clarificationReason,
-                    clarification_options: clarificationOptions,
-                    instruction: `CLARIFICATION NEEDED: Call request_clarification tool with clarification_type="contact_selection", question="Which contact did you mean?", options=[${clarificationOptions?.map((opt: any) => `"${opt.title} (${opt.subtitle})"`).join(', ')}], context="${clarificationReason}". Do NOT proceed with send_message until user selects a contact.`
-                  });
-                } else if (contacts.length === 1) {
-                  // Single match - make it very clear what to do next
-                  const contact = contacts[0];
-                  toolResultContent = JSON.stringify({
-                    success: true,
-                    tool: "lookup_contacts",
-                    contact_found: {
-                      user_id: contact.id,
-                      name: contact.name,
-                      email: contact.email,
-                      confidence: contact.confidence
-                    },
-                    instruction: `IMPORTANT: Use this contact's user_id "${contact.id}" as the recipient_id parameter in send_message. Do NOT call lookup_contacts again.`
-                  });
-                } else {
-                  // Multiple matches - let AI choose best one
-                  toolResultContent = JSON.stringify({
-                    success: true,
-                    tool: "lookup_contacts",
-                    contacts_found: contacts.map((c: any) => ({
-                      user_id: c.id,
-                      name: c.name,
-                      email: c.email,
-                      confidence: c.confidence
-                    })),
-                    instruction: `Found ${contacts.length} contacts. Choose the contact with highest confidence and use their user_id as recipient_id in send_message. Do NOT call lookup_contacts again.`
-                  });
-                }
-              } else if (toolName === "summarize_conversation" && result.success && result.data?.summary) {
-                // Format summarization results clearly
-                toolResultContent = JSON.stringify({
-                  success: true,
-                  tool: "summarize_conversation",
-                  summary: result.data.summary,
-                  message_count: result.data.message_count,
-                  time_range: result.data.time_range,
-                  participants: result.data.participants,
-                  key_topics: result.data.key_topics,
-                  instruction: "Summary complete. No further action needed."
-                });
-              } else if (toolName === "request_clarification" && result.success && result.data?.requires_user_input) {
-                // Format clarification requests clearly
-                toolResultContent = JSON.stringify({
-                  success: true,
-                  tool: "request_clarification",
-                  clarification_type: result.data.clarification_type,
-                  question: result.data.question,
-                  context: result.data.context,
-                  options: result.data.options,
-                  best_option: result.data.best_option,
-                  allow_cancel: result.data.allow_cancel,
-                  instruction: "STOP: User clarification required. Present options and wait for user selection."
-                });
-              } else {
-                toolResultContent = JSON.stringify({
-                  success: result.success,
-                  tool: toolName,
-                  data: result.data,
-                  message: result.success ? "Tool executed successfully" : result.error,
-                });
-              }
+              // Use standardized tool result format
+              const toolResultContent = JSON.stringify({
+                success: result.success,
+                data: result.data,
+                next_action: result.next_action,
+                clarification: result.clarification,
+                error: result.error,
+                instruction_for_ai: result.instruction_for_ai,
+                confidence: result.confidence,
+                metadata: result.metadata
+              }, null, 2); // Pretty print for readability
               
               messages.push({
                 role: "tool",
@@ -650,46 +570,6 @@ When you see tool results, analyze them carefully and decide what to do next bas
     return {
       success: false,
       error: "Failed to parse command with AI",
-    };
-  }
-}
-
-/**
- * Execute a single tool
- */
-async function executeSingleTool(toolCall: any, currentUserId: string, appContext: any): Promise<any> {
-  const tool = toolRegistry.getTool(toolCall.tool);
-  if (!tool) {
-    return {
-      success: false,
-      result: null,
-      response: `Tool '${toolCall.tool}' not found`,
-      action: "show_error",
-    };
-  }
-
-  const context: ToolContext = {
-    currentUserId,
-    appContext,
-    requestId: `single-${Date.now()}`,
-  };
-
-  try {
-    const result = await tool.execute(toolCall.parameters, context);
-
-    return {
-      success: result.success,
-      result: result.data,
-      response: generateResponse(result, toolCall.tool),
-      action: determineAction(result, toolCall.tool),
-    };
-  } catch (error) {
-    logger.error(`Error executing single tool ${toolCall.tool}:`, error);
-    return {
-      success: false,
-      result: null,
-      response: `Error executing ${toolCall.tool}`,
-      action: "show_error",
     };
   }
 }
@@ -777,27 +657,27 @@ async function executeToolChain(
  * Process tool chain results and generate final response
  */
 function processToolChainResults(results: any[], toolChain: any[]): any {
-  // Check if any tool failed
-  const failedTools = results.filter((r) => !r.success);
-  if (failedTools.length > 0) {
+  // Check for errors first
+  const errorResult = results.find((r) => r.next_action === "error" || !r.success);
+  if (errorResult) {
     return {
       success: false,
       data: null,
-      response: `Command failed: ${failedTools[0].error}`,
+      response: errorResult.error || "Command failed",
       action: "show_error",
     };
   }
 
-  // Check if clarification was requested
-  const clarificationResult = results.find(r => r.toolName === "request_clarification");
-  if (clarificationResult?.success && clarificationResult.data?.requires_user_input) {
+  // Check if clarification was needed
+  const clarificationResult = results.find(r => r.next_action === "clarification_needed");
+  if (clarificationResult) {
     return {
       success: true,
-      data: clarificationResult.data,
-      response: generateChainResponse(results, toolChain),
+      data: clarificationResult.clarification,
+      response: clarificationResult.clarification.question,
       action: "request_clarification",
       requires_clarification: true,
-      clarification_data: clarificationResult.data,
+      clarification_data: clarificationResult.clarification,
     };
   }
 
@@ -837,32 +717,6 @@ function generateChainResponse(results: any[], toolChain: any[]): string {
   } else if (toolNames.includes("get_messages")) {
     return "Retrieved messages as requested.";
   } else {
-    return "Command executed successfully.";
-  }
-}
-
-/**
- * Generate response for single tool execution
- */
-function generateResponse(result: any, toolName: string): string {
-  if (!result.success) {
-    return result.error || "Command failed";
-  }
-
-  switch (toolName) {
-  case "send_message":
-    return "Message sent successfully!";
-  case "get_conversations":
-    return `Found ${result.data?.conversations?.length || 0} conversations.`;
-  case "lookup_contacts":
-    return `Found ${result.data?.contacts?.length || 0} contacts.`;
-  case "get_messages":
-    return `Retrieved ${result.data?.messages?.length || 0} messages.`;
-  case "resolve_conversation":
-    return result.data?.was_created ? "Created new conversation." : "Found existing conversation.";
-  case "get_conversation_info":
-    return "Retrieved conversation information.";
-  default:
     return "Command executed successfully.";
   }
 }

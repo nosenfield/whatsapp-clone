@@ -45,7 +45,20 @@ export interface ToolContext {
 export interface ToolResult {
   success: boolean;
   data?: any;
+  next_action?: "continue" | "clarification_needed" | "complete" | "error";
+  clarification?: {
+    type: string;
+    question: string;
+    options: Array<{
+      id: string;           // Actual entity ID (user_id, conversation_id, etc.)
+      title: string;        // Display name
+      subtitle: string;     // Additional context
+      confidence: number;   // 0-1 confidence score
+      metadata?: any;       // Extra data
+    }>;
+  };
   error?: string;
+  instruction_for_ai?: string; // Single, clear instruction
   confidence?: number; // 0-1 confidence score
   metadata?: {
     executionTime?: number;
@@ -183,8 +196,18 @@ export abstract class BaseAITool implements AITool {
         const userDoc = await admin.firestore().collection("users").doc(userId).get();
         if (userDoc.exists) {
           const userData = userDoc.data();
+          const displayName = userData?.displayName || userData?.email || 'Unknown';
+          
+          logger.info(`Creating conversation - User ${userId} details:`, {
+            userId,
+            displayName: userData?.displayName,
+            email: userData?.email,
+            hasPhotoURL: !!userData?.photoURL,
+            finalDisplayName: displayName
+          });
+          
           const details: { displayName: string; photoURL?: string } = {
-            displayName: userData?.displayName || 'Unknown',
+            displayName: displayName,
           };
           
           // Only include photoURL if it exists (Firestore doesn't accept undefined)
@@ -194,18 +217,26 @@ export abstract class BaseAITool implements AITool {
           
           participantDetails[userId] = details;
         } else {
-          // Fallback for missing user data
+          logger.warn(`User document not found for ${userId}, using fallback`);
           participantDetails[userId] = {
             displayName: 'Unknown',
           };
         }
       } catch (error) {
-        logger.warn(`Failed to fetch user details for ${userId}:`, error);
+        logger.error(`Failed to fetch user details for ${userId}:`, error);
         participantDetails[userId] = {
           displayName: 'Unknown',
         };
       }
     }
+
+    logger.info(`Creating conversation with participants:`, {
+      participants,
+      participantDetails: Object.keys(participantDetails).map(userId => ({
+        userId,
+        displayName: participantDetails[userId].displayName
+      }))
+    });
 
     const conversationData: any = {
       type: participants.length === 2 ? "direct" : "group",
@@ -221,6 +252,12 @@ export abstract class BaseAITool implements AITool {
     }
 
     const docRef = await admin.firestore().collection("conversations").add(conversationData);
+
+    logger.info(`Conversation created successfully:`, {
+      conversationId: docRef.id,
+      type: conversationData.type,
+      participantCount: participants.length
+    });
 
     return {
       id: docRef.id,
@@ -311,9 +348,13 @@ export class ToolChainExecutor {
       if (!tool) {
         results.push({
           success: false,
+          data: {},
+          next_action: "error",
           error: `Tool '${toolCall.tool}' not found`,
+          instruction_for_ai: "Inform user that the requested tool is not available.",
+          confidence: 0,
         });
-        continue;
+        break; // Stop on error
       }
 
       // Add previous results to context for tool chaining
@@ -337,31 +378,52 @@ export class ToolChainExecutor {
         results.push(result);
         context.previousResults.set(tool.name, result);
 
-        // If tool failed and it's critical, break the chain
-        if (!result.success && this.isCriticalTool(tool.name)) {
-          logger.warn(`Critical tool ${tool.name} failed, breaking chain`);
-          break;
+        // CHECK FOR STOP CONDITIONS IMMEDIATELY
+        if (result.next_action === "clarification_needed") {
+          logger.info(`Clarification needed from ${tool.name}, stopping chain immediately`, {
+            clarification: result.clarification
+          });
+          break; // Stop chain immediately
         }
+
+        if (result.next_action === "error" || !result.success) {
+          logger.warn(`Tool ${tool.name} failed or errored, stopping chain`, {
+            error: result.error
+          });
+          break; // Stop on error
+        }
+
+        if (result.next_action === "complete") {
+          logger.info(`Tool ${tool.name} completed successfully, chain done`, {
+            tool: tool.name
+          });
+          break; // Natural end of chain
+        }
+
+        // If next_action is "continue", proceed to next tool
+        logger.info(`Tool ${tool.name} completed, continuing chain`, {
+          next_action: result.next_action
+        });
+
       } catch (error) {
         logger.error(`Error executing tool ${tool.name}:`, error);
         results.push({
           success: false,
+          data: {},
+          next_action: "error",
           error: error instanceof Error ? error.message : "Unknown error",
+          instruction_for_ai: "Inform user that tool execution failed.",
+          confidence: 0,
           metadata: {
             toolName: tool.name,
             chainPosition: i,
           },
         });
+        break; // Stop on exception
       }
     }
 
     return results;
-  }
-
-  private isCriticalTool(toolName: string): boolean {
-    // Define which tools are critical for the chain to continue
-    const criticalTools = ["resolve_conversation", "lookup_contacts"];
-    return criticalTools.includes(toolName);
   }
 }
 
