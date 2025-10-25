@@ -183,22 +183,26 @@ export abstract class BaseAITool implements AITool {
         const userDoc = await admin.firestore().collection("users").doc(userId).get();
         if (userDoc.exists) {
           const userData = userDoc.data();
-          participantDetails[userId] = {
+          const details: { displayName: string; photoURL?: string } = {
             displayName: userData?.displayName || 'Unknown',
-            photoURL: userData?.photoURL || undefined,
           };
+          
+          // Only include photoURL if it exists (Firestore doesn't accept undefined)
+          if (userData?.photoURL) {
+            details.photoURL = userData.photoURL;
+          }
+          
+          participantDetails[userId] = details;
         } else {
           // Fallback for missing user data
           participantDetails[userId] = {
             displayName: 'Unknown',
-            photoURL: undefined,
           };
         }
       } catch (error) {
         logger.warn(`Failed to fetch user details for ${userId}:`, error);
         participantDetails[userId] = {
           displayName: 'Unknown',
-          photoURL: undefined,
         };
       }
     }
