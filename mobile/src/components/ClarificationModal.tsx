@@ -48,9 +48,7 @@ export const ClarificationModal: React.FC<ClarificationModalProps> = ({
   };
 
   const handleCancel = () => {
-    if (clarificationData.allow_cancel) {
-      onCancel();
-    }
+    onCancel();
   };
 
   const getIconForType = (type: string) => {
@@ -96,14 +94,12 @@ export const ClarificationModal: React.FC<ClarificationModalProps> = ({
             />
             <Text style={styles.title}>{getTypeLabel(clarificationData.clarification_type)}</Text>
           </View>
-          {clarificationData.allow_cancel && (
-            <TouchableOpacity
-              onPress={handleCancel}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={handleCancel}
+            style={styles.closeButton}
+          >
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.content}>
