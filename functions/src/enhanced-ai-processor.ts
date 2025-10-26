@@ -539,7 +539,14 @@ async function parseCommandWithToolChain(
                 requestId: `iter-${iterationCount}-${Date.now()}`,
               };
               
-              const result = await tool.execute(parameters, context);
+              // Add timeout to prevent hanging requests (15 seconds)
+              const TOOL_TIMEOUT_MS = 15000;
+              const result = await Promise.race([
+                tool.execute(parameters, context),
+                new Promise<never>((_, reject) => 
+                  setTimeout(() => reject(new Error(`Tool execution timeout after ${TOOL_TIMEOUT_MS}ms`)), TOOL_TIMEOUT_MS)
+                )
+              ]);
               
               // Store result for parameter mapping
               toolResults.push(result);
@@ -609,6 +616,18 @@ async function parseCommandWithToolChain(
         success: false,
         error: "No appropriate tools found for this command",
       };
+    }
+
+    // Enforce max chain length (prevent LLM from proposing too many tools)
+    const MAX_CHAIN_LENGTH = 3;
+    if (toolChain.length > MAX_CHAIN_LENGTH) {
+      logger.warn("Tool chain exceeds max length, truncating", {
+        originalLength: toolChain.length,
+        maxLength: MAX_CHAIN_LENGTH,
+        tools: toolChain.map(tc => tc.tool),
+        truncatedTools: toolChain.slice(0, MAX_CHAIN_LENGTH).map(tc => tc.tool)
+      });
+      toolChain.splice(MAX_CHAIN_LENGTH); // Truncate to max length
     }
 
     if (runTree) {
@@ -890,8 +909,14 @@ get_conversations.data.conversations[0].id → summarize_conversation.conversati
 To decide which pattern to use, classify the user's intent:
 
 - Sending a message? → Pattern 1 (lookup_contacts + send_message)
+  Triggers: "tell", "send", "message", "let X know", "inform"
+  
 - Want a summary of conversation? → Pattern 2 (summarize_conversation)
+  Triggers: "summarize", "recap", "sum up", "what happened", "overview"
+  
 - Asking "who/what/when/where" about conversation content? → Pattern 3 (analyze_conversation)
+  Triggers: "who is", "what did", "when is", "how many", "list all", "did anyone"
+  Examples: "Who confirmed?", "What did Sarah say?", "When is the deadline?"
 
 # EXAMPLE
 User: "Message Jane saying hi"
