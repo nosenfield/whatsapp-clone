@@ -29,9 +29,15 @@ export const MessageList: React.FC<MessageListProps> = ({
   fetchNextPage,
   isFetchingNextPage = false,
 }) => {
-  // Show loading or empty state
-  if (isLoading || messages.length === 0) {
-    return <EmptyState isLoading={isLoading} />;
+  // Show loading state while loading (only if we truly have no messages)
+  if (isLoading && messages.length === 0) {
+    return <EmptyState isLoading={true} />;
+  }
+  
+  // If we have messages, show them even if still loading (for smooth transitions)
+  // If no messages and not loading, show blank (not empty state to prevent flash)
+  if (messages.length === 0 && !isLoading) {
+    return <View style={styles.list} />;
   }
 
   const renderMessageItem = ({ item, index }: { item: Message; index: number }) => (

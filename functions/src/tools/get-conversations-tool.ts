@@ -137,9 +137,26 @@ export class GetConversationsTool extends BaseAITool {
         },
       };
 
+      // Provide clear next action instruction for AI
+      let instruction_for_ai = "";
+      let next_action: "continue" | "complete" = "complete";
+      
+      if (conversations.length === 0) {
+        instruction_for_ai = "No conversations found. Inform the user.";
+        next_action = "complete";
+      } else if (conversations.length === 1) {
+        instruction_for_ai = `Use conversation_id "${conversations[0].conversation_id}" for the next tool call (e.g., summarize_conversation, get_messages).`;
+        next_action = "continue";
+      } else {
+        instruction_for_ai = `Found ${conversations.length} conversations. If user wants to summarize the most recent, use conversation_id "${conversations[0].conversation_id}". Otherwise, present the list to the user.`;
+        next_action = "continue";
+      }
+
       return {
         success: true,
         data: result,
+        next_action,
+        instruction_for_ai,
         confidence: 0.95,
         metadata: {
           conversationsReturned: conversations.length,

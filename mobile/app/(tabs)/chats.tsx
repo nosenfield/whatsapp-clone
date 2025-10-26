@@ -14,6 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth-store';
+import { useNavigationCacheStore } from '../../src/store/navigation-cache-store';
 import { useConversations } from '../../src/hooks/useConversations';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { ConversationItem } from '../../src/components/ConversationItem';
@@ -21,6 +22,7 @@ import { AICommandButton } from '../../src/components/AICommandButton';
 import { useAICommandContext } from '../../src/hooks/useAICommandContext';
 import { Conversation } from '../../src/types';
 import { deleteConversation } from '../../src/services/conversation-service/';
+import { getConversationMessages } from '../../src/services/database/';
 
 export default function ChatsScreen() {
   const currentUser = useAuthStore((state) => state.user);
@@ -29,6 +31,7 @@ export default function ChatsScreen() {
   );
   const aiContext = useAICommandContext();
   const [isManualRefresh, setIsManualRefresh] = useState(false);
+  const { setCachedMessages } = useNavigationCacheStore();
 
   // Refetch when screen comes into focus (auto-refresh - no spinner)
   useFocusEffect(
@@ -72,8 +75,34 @@ export default function ChatsScreen() {
     }
   };
 
-  const handleConversationPress = (conversationId: string) => {
-    router.push(`/conversation/${conversationId}`);
+  const handleConversationPress = async (conversationId: string) => {
+    console.log('📱 Conversation pressed:', conversationId);
+    
+    // ⚡ PERFORMANCE: Load cached messages before navigation to prevent flash
+    try {
+      console.log('⏳ Loading cached messages...');
+      const cachedMessages = await getConversationMessages(conversationId, 50, 0);
+      console.log('✅ Pre-loaded', cachedMessages.length, 'cached messages');
+      console.log('📦 Sample message:', cachedMessages[0] ? {
+        id: cachedMessages[0].id,
+        content: cachedMessages[0].content.text?.substring(0, 30),
+      } : 'none');
+      
+      // Store in global cache for the conversation screen to pick up
+      setCachedMessages(conversationId, cachedMessages);
+      console.log('💾 Stored in navigation cache');
+      
+      // Small delay to ensure state is set before navigation
+      await new Promise(resolve => setTimeout(resolve, 10));
+      
+      // Navigate normally - conversation screen will check cache
+      console.log('🚀 Navigating to conversation...');
+      router.push(`/conversation/${conversationId}` as any);
+    } catch (error) {
+      console.error('❌ Error pre-loading messages:', error);
+      // Navigate anyway - will fall back to normal cache check
+      router.push(`/conversation/${conversationId}` as any);
+    }
   };
 
   const handleConversationLongPress = (conversationId: string) => {
