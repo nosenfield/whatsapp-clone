@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAICommands } from '../hooks/useAICommands';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
 import { ClarificationModal, ClarificationData, ClarificationOption } from './ClarificationModal';
+import { SummaryModal, SummaryData } from './SummaryModal';
 
 interface AICommandButtonProps {
   currentConversationId?: string;
@@ -40,6 +41,8 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
   const [isClarificationVisible, setIsClarificationVisible] = useState(false);
   const [clarificationData, setClarificationData] = useState<ClarificationData | null>(null);
   const [originalCommand, setOriginalCommand] = useState('');
+  const [isSummaryVisible, setIsSummaryVisible] = useState(false);
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
   
   const { executeCommand, continueCommandWithClarification, isProcessing, error } = useAICommands(currentConversationId, appContext);
 
@@ -55,6 +58,7 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
         success: result.success,
         requires_clarification: result.requires_clarification,
         clarification_data: result.clarification_data,
+        action: result.action,
         message: result.message
       });
       
@@ -65,6 +69,13 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
         setOriginalCommand(result.original_command || command.trim());
         setIsClarificationVisible(true);
         setIsModalVisible(false); // Hide command modal
+      } else if (result.action?.type === 'summary' && result.action?.payload) {
+        console.log('✅ Showing summary modal');
+        // Show summary modal
+        setSummaryData(result.action.payload);
+        setIsSummaryVisible(true);
+        setIsModalVisible(false); // Hide command modal
+        setCommand('');
       } else {
         console.log('✅ Showing success alert');
         Alert.alert('Success', result.message);
@@ -129,6 +140,11 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
     setOriginalCommand('');
     // Reopen command modal
     setIsModalVisible(true);
+  };
+
+  const handleSummaryClose = () => {
+    setIsSummaryVisible(false);
+    setSummaryData(null);
   };
 
   return (
@@ -220,6 +236,13 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
           onCancel={handleClarificationCancel}
         />
       )}
+
+      {/* Summary Modal */}
+      <SummaryModal
+        visible={isSummaryVisible}
+        summaryData={summaryData}
+        onClose={handleSummaryClose}
+      />
     </>
   );
 };

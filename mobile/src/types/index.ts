@@ -243,3 +243,14 @@ export interface UserFeatureFlags {
   };
   updatedAt: Date;
 }
+
+// AI Conversation Summary
+export interface ConversationSummary {
+  summary: string;
+  message_count: number;
+  time_range: string;
+  conversation_id: string;
+  summary_length: string;
+  participants?: string[];
+  key_topics?: string[];
+}

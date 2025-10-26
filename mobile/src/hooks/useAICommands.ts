@@ -8,7 +8,7 @@ interface AICommandResult {
   success: boolean;
   message: string;
   action?: {
-    type: 'navigate' | 'toast' | 'none';
+    type: 'navigate' | 'toast' | 'summary' | 'none';
     payload?: any;
   };
   runId?: string; // LangSmith run ID
@@ -109,7 +109,7 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
           // Extract clarification data from different possible locations
           const clarificationData = response.clarification_data || 
                                   response.result || 
-                                  (response.action && typeof response.action === 'object' && response.action.payload);
+                                  (response.action && typeof response.action === 'object' && (response.action as any).payload);
           
           return {
             success: true,
@@ -121,11 +121,21 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
           };
         }
         
+        // Determine action type based on response.action
+        let actionType: 'navigate' | 'toast' | 'summary' | 'none' = 'toast';
+        if (response.action === 'navigate_to_conversation') {
+          actionType = 'navigate';
+        } else if (response.action === 'show_summary') {
+          actionType = 'summary';
+        } else if (response.action === 'no_action') {
+          actionType = 'none';
+        }
+        
         return {
           success: true,
           message: response.response,
           action: {
-            type: response.action === 'navigate_to_conversation' ? 'navigate' : 'toast',
+            type: actionType,
             payload: response.result,
           },
           runId: response.runId,
