@@ -39,6 +39,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const response = await client.embeddings.create({
       model: "text-embedding-3-small",
       input: cleanText,
+      // Using default 1536 dimensions to match Pinecone index
     });
 
     const embedding = response.data[0]?.embedding;
@@ -73,6 +74,7 @@ export async function generateQueryEmbedding(query: string): Promise<number[]> {
     const response = await client.embeddings.create({
       model: "text-embedding-3-small",
       input: cleanQuery,
+      // Using default 1536 dimensions to match Pinecone index
     });
 
     const embedding = response.data[0]?.embedding;
@@ -107,6 +109,7 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
     const response = await client.embeddings.create({
       model: "text-embedding-3-small",
       input: cleanTexts,
+      // Using default 1536 dimensions to match Pinecone index
     });
 
     const embeddings = response.data.map((item) => item.embedding);

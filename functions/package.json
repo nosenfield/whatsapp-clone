@@ -13,7 +13,8 @@
     "test:simple": "ts-node simple-test.ts",
     "test:ai-tools": "node tests/ai-tool-consistency/comprehensive-test.js",
     "test:ai-tools:simple": "node tests/ai-tool-consistency/simple-test.js",
-    "test:ai-tools:full": "node tests/ai-tool-consistency/test-ai-tool-consistency.js"
+    "test:ai-tools:full": "node tests/ai-tool-consistency/test-ai-tool-consistency.js",
+    "test:rag": "ts-node test-rag-pipeline.ts"
   },
   "engines": {
     "node": "20"
