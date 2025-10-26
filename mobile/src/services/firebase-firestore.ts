@@ -58,20 +58,42 @@ export const createConversation = async (participants: string[]): Promise<string
   return conversationRef.id;
 };
 
-export const getConversation = async (conversationId: string): Promise<Conversation | null> => {
+export const subscribeToConversation = (
+  conversationId: string,
+  callback: (conversation: Conversation) => void
+): (() => void) => {
   const conversationRef = doc(firestore, 'conversations', conversationId);
-  const conversationSnap = await getDoc(conversationRef);
   
-  if (conversationSnap.exists()) {
-    const data = conversationSnap.data();
-    return {
-      id: conversationSnap.id,
-      ...data,
-      createdAt: data.createdAt.toDate(),
-      lastMessageAt: data.lastMessageAt.toDate(),
-    } as Conversation;
-  }
-  return null;
+  const unsubscribe = onSnapshot(conversationRef, (doc) => {
+    if (doc.exists()) {
+      const data = doc.data();
+      const conversation: Conversation = {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
+        lastMessage: data.lastMessage ? {
+          id: data.lastMessage.id || '',
+          text: data.lastMessage.text,
+          senderId: data.lastMessage.senderId,
+          timestamp: data.lastMessage.timestamp?.toDate() || new Date(),
+        } : undefined,
+        lastSeenBy: data.lastSeenBy ? Object.fromEntries(
+          Object.entries(data.lastSeenBy).map(([userId, seenData]: [string, any]) => [
+            userId,
+            {
+              lastMessageId: seenData.lastMessageId,
+              seenAt: seenData.seenAt?.toDate() || new Date()
+            }
+          ])
+        ) : {},
+      } as Conversation;
+      
+      callback(conversation);
+    }
+  });
+  
+  return unsubscribe;
 };
 
 // Message operations
@@ -87,24 +109,6 @@ export const sendMessage = async (
   return messageDoc.id;
 };
 
-// Real-time subscriptions
-export const subscribeToConversation = (
-  conversationId: string,
-  callback: (conversation: Conversation) => void
-): (() => void) => {
-  const conversationRef = doc(firestore, 'conversations', conversationId);
-  return onSnapshot(conversationRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const data = snapshot.data();
-      callback({
-        id: snapshot.id,
-        ...data,
-        createdAt: data.createdAt.toDate(),
-        lastMessageAt: data.lastMessageAt.toDate(),
-      } as Conversation);
-    }
-  });
-};
 
 export const subscribeToMessages = (
   conversationId: string,

@@ -6,6 +6,7 @@ import { initializePresence, setPresence } from '../services/firebase-rtdb';
 import { registerForPushNotifications } from '../services/notifications';
 import { getAuthErrorMessage, getFirestoreErrorMessage } from '../utils/error-messages';
 import { User as FirebaseUser } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthState {
   // State
@@ -31,14 +32,53 @@ interface AuthState {
  * Convert Firebase User to our User type
  */
 const firebaseUserToUser = (firebaseUser: FirebaseUser): User => {
-  return {
+  const user: User = {
     id: firebaseUser.uid,
     email: firebaseUser.email!,
     displayName: firebaseUser.displayName || 'Anonymous',
-    photoURL: firebaseUser.photoURL || undefined,
     createdAt: new Date(firebaseUser.metadata.creationTime!),
     lastActive: new Date(),
   };
+
+  // Only add photoURL if it exists (Firestore doesn't allow undefined values)
+  if (firebaseUser.photoURL) {
+    user.photoURL = firebaseUser.photoURL;
+  }
+
+  return user;
+};
+
+/**
+ * Manual auth persistence helpers for Expo Go compatibility
+ */
+const AUTH_STORAGE_KEY = '@whatsapp_clone_auth_user';
+
+const saveUserToStorage = async (user: User | null): Promise<void> => {
+  try {
+    if (user) {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      console.log('💾 User saved to AsyncStorage');
+    } else {
+      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      console.log('🗑️ User removed from AsyncStorage');
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to save user to storage:', error);
+  }
+};
+
+const getUserFromStorage = async (): Promise<User | null> => {
+  try {
+    const userData = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    if (userData) {
+      const user = JSON.parse(userData);
+      console.log('📱 User restored from AsyncStorage');
+      return user;
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to restore user from storage:', error);
+  }
+  return null;
 };
 
 /**
@@ -60,6 +100,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isLoading: false,
       error: null,
     });
+    // Save to AsyncStorage for persistence across reloads
+    saveUserToStorage(user);
   },
 
   // Set loading state
@@ -94,12 +136,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Convert to our User type
       const user = firebaseUserToUser(firebaseUser);
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for new user');
@@ -147,12 +185,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         lastActive: new Date(),
       });
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for signed-in user');
@@ -192,9 +226,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user = {
           ...userData,
           displayName: firebaseUser.displayName || userData.displayName,
-          photoURL: firebaseUser.photoURL || userData.photoURL,
           lastActive: new Date(),
         };
+
+        // Only update photoURL if it exists (Firestore doesn't allow undefined values)
+        if (firebaseUser.photoURL) {
+          user.photoURL = firebaseUser.photoURL;
+        } else if (userData.photoURL) {
+          user.photoURL = userData.photoURL;
+        }
         
         // Update user document with latest info
         await firestoreService.updateUser(firebaseUser.uid, {
@@ -208,20 +248,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: firebaseUser.uid,
           email: firebaseUser.email!,
           displayName: firebaseUser.displayName || 'Google User',
-          photoURL: firebaseUser.photoURL || undefined,
           createdAt: new Date(firebaseUser.metadata.creationTime!),
           lastActive: new Date(),
         };
+
+        // Only add photoURL if it exists (Firestore doesn't allow undefined values)
+        if (firebaseUser.photoURL) {
+          user.photoURL = firebaseUser.photoURL;
+        }
         
         await firestoreService.createUser(firebaseUser.uid, user);
       }
 
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to save to AsyncStorage
+      get().setUser(user);
 
       // Initialize presence system
       console.log('🟢 Initializing presence for Google signed-in user');
@@ -259,12 +299,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       await firebaseAuth.signOut();
 
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null,
-      });
+      // Use setUser to clear AsyncStorage and update state
+      get().setUser(null);
 
       console.log('✅ User signed out successfully');
     } catch (error: any) {
@@ -284,6 +320,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    */
   initializeAuth: async () => {
     set({ isLoading: true });
+
+    // First, try to restore user from AsyncStorage (for Expo Go compatibility)
+    const storedUser = await getUserFromStorage();
+    let hasRestoredFromStorage = false;
+    
+    if (storedUser) {
+      console.log('🔄 Restoring user from AsyncStorage:', storedUser.email);
+      get().setUser(storedUser); // Use setUser to save to AsyncStorage
+      hasRestoredFromStorage = true;
+      
+      // Initialize presence and push token for restored user
+      try {
+        await initializePresence(storedUser.id);
+        await get().registerPushToken(storedUser.id);
+        console.log('✅ User restored from AsyncStorage');
+      } catch (error) {
+        console.warn('⚠️ Failed to initialize services for restored user:', error);
+      }
+    }
 
     // Configure Google Sign-In
     try {
@@ -309,12 +364,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await firestoreService.createUser(firebaseUser.uid, user);
           }
 
-          set({
-            user,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          });
+          // Use setUser to save to AsyncStorage
+          get().setUser(user);
 
           // Initialize presence system
           console.log('🟢 Initializing presence for restored user');
@@ -327,23 +378,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch (error: any) {
           console.error('❌ Error loading user data:', error);
           const errorMessage = getFirestoreErrorMessage(error);
-          set({
-            user: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: errorMessage,
-          });
+          get().setUser(null); // Use setUser to clear AsyncStorage
         }
       } else {
-        // User is signed out
-        set({
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: null,
-        });
-
-        console.log('ℹ️ No authenticated user');
+        // User is signed out - only clear if we didn't restore from AsyncStorage
+        if (!hasRestoredFromStorage) {
+          get().setUser(null); // Use setUser to clear AsyncStorage
+          console.log('ℹ️ No authenticated user');
+        } else {
+          console.log('ℹ️ Firebase Auth says no user, but we restored from AsyncStorage');
+        }
       }
     });
 

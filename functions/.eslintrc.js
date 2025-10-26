@@ -33,5 +33,6 @@ module.exports = {
     "max-len": "warn",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-unused-vars": "warn",
+    "valid-jsdoc": "off",
   },
 };

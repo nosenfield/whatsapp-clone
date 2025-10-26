@@ -1,8 +1,10 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, ActionSheetIOS, Alert, Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Message, Conversation } from '../types';
-import { useState } from 'react';
+import { Message, Conversation, ExtractedEvent } from '../types';
+import { useState, useEffect } from 'react';
+import { CalendarEventCard } from './ai/CalendarEventCard';
+import { useConversationEvents } from '../hooks/useCalendarEvents';
 
 interface MessageBubbleProps {
   message: Message;
@@ -19,6 +21,12 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  
+  // Get calendar events for this conversation
+  const { data: conversationEvents } = useConversationEvents(conversation?.id || '');
+  
+  // Find events extracted from this specific message
+  const messageEvents = conversationEvents?.filter(event => event.messageId === message.id) || [];
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
@@ -165,6 +173,30 @@ export function MessageBubble({
           {getStatusIcon()}
         </View>
       </TouchableOpacity>
+      
+      {/* Calendar Events extracted from this message */}
+      {messageEvents.length > 0 && (
+        <View style={styles.eventsContainer}>
+          {messageEvents.map((event) => (
+            <CalendarEventCard
+              key={event.id}
+              event={event}
+              onConfirm={(eventId) => {
+                // Handle event confirmation
+                console.log('Confirm event:', eventId);
+              }}
+              onDismiss={(eventId) => {
+                // Handle event dismissal
+                console.log('Dismiss event:', eventId);
+              }}
+              onAddToCalendar={(eventId) => {
+                // Handle adding to calendar
+                console.log('Add to calendar:', eventId);
+              }}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -265,6 +297,10 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     marginBottom: 2,
     marginLeft: 12,
+  },
+  eventsContainer: {
+    marginTop: 8,
+    marginHorizontal: 4,
   },
 });
 

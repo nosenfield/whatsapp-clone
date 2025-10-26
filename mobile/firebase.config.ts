@@ -41,7 +41,7 @@ for (const key of requiredConfigKeys) {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 
-// Initialize Auth (will use default persistence)
+// Initialize Auth (Firebase v12 handles persistence automatically in React Native)
 export const auth = getAuth(app);
 
 // Initialize Firestore with offline persistence
@@ -52,7 +52,7 @@ export const firestore = initializeFirestore(app, {
 
 export const realtimeDb = getDatabase(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, 'us-central1');
 
 // Log config status in development (without exposing sensitive values)
 if (__DEV__) {

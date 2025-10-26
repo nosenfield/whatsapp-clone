@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getUserConversations } from '../services/conversation-service';
+import { getUserConversations } from '../services/conversation-service/';
 import { Conversation } from '../types';
 
 /**

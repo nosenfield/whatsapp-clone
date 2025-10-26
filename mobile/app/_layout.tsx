@@ -3,7 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
-import { initDatabase } from '../src/services/database';
+import { initDatabase } from '../src/services/database/';
 import { useAuthStore } from '../src/store/auth-store';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import {

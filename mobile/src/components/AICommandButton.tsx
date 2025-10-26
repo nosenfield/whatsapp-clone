@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAICommands } from '../hooks/useAICommands';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
+import { ClarificationModal, ClarificationData, ClarificationOption } from './ClarificationModal';
 
 interface AICommandButtonProps {
   currentConversationId?: string;
@@ -36,7 +37,11 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
 }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [command, setCommand] = useState('');
-  const { executeCommand, isProcessing, error } = useAICommands(currentConversationId);
+  const [isClarificationVisible, setIsClarificationVisible] = useState(false);
+  const [clarificationData, setClarificationData] = useState<ClarificationData | null>(null);
+  const [originalCommand, setOriginalCommand] = useState('');
+  
+  const { executeCommand, continueCommandWithClarification, isProcessing, error } = useAICommands(currentConversationId, appContext);
 
   const handleCommandSubmit = async () => {
     if (!command.trim()) return;
@@ -46,9 +51,26 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
     console.log('📋 AI command result:', result);
     
     if (result.success) {
-      Alert.alert('Success', result.message);
-      setIsModalVisible(false);
-      setCommand('');
+      console.log('🔍 AI Command result:', {
+        success: result.success,
+        requires_clarification: result.requires_clarification,
+        clarification_data: result.clarification_data,
+        message: result.message
+      });
+      
+      if (result.requires_clarification && result.clarification_data) {
+        console.log('✅ Showing clarification modal');
+        // Show clarification modal
+        setClarificationData(result.clarification_data);
+        setOriginalCommand(result.original_command || command.trim());
+        setIsClarificationVisible(true);
+        setIsModalVisible(false); // Hide command modal
+      } else {
+        console.log('✅ Showing success alert');
+        Alert.alert('Success', result.message);
+        setIsModalVisible(false);
+        setCommand('');
+      }
     } else {
       // Show error with suggestions if available
       const friendlyError = createUserFriendlyError({ message: result.message });
@@ -75,6 +97,38 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
 
   const handleSuggestedCommand = (suggestedCommand: string) => {
     setCommand(suggestedCommand);
+  };
+
+  const handleClarificationSelect = async (option: ClarificationOption) => {
+    if (!clarificationData || !originalCommand) return;
+
+    console.log('📋 User selected clarification option:', option.title);
+    setIsClarificationVisible(false);
+
+    const result = await continueCommandWithClarification(
+      originalCommand,
+      clarificationData,
+      option
+    );
+
+    if (result.success) {
+      Alert.alert('Success', result.message);
+      setCommand('');
+    } else {
+      Alert.alert('Error', result.message);
+    }
+
+    // Reset state
+    setClarificationData(null);
+    setOriginalCommand('');
+  };
+
+  const handleClarificationCancel = () => {
+    setIsClarificationVisible(false);
+    setClarificationData(null);
+    setOriginalCommand('');
+    // Reopen command modal
+    setIsModalVisible(true);
   };
 
   return (
@@ -156,6 +210,16 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
           </View>
         </View>
       </Modal>
+
+      {/* Clarification Modal */}
+      {clarificationData && (
+        <ClarificationModal
+          visible={isClarificationVisible}
+          clarificationData={clarificationData}
+          onSelect={handleClarificationSelect}
+          onCancel={handleClarificationCancel}
+        />
+      )}
     </>
   );
 };

@@ -14,7 +14,7 @@ import { router, Stack } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/store/auth-store';
 import { searchUsersByEmail } from '../src/services/user-search';
-import { createGroupConversation } from '../src/services/conversation-service';
+import { createGroupConversation } from '../src/services/conversation-service/';
 import { User } from '../src/types';
 import { getBottomSafeArea } from '../src/constants/layout';
 import { MAX_GROUP_SIZE } from '../src/constants';
@@ -37,7 +37,8 @@ export default function NewGroupScreen() {
 
     setIsSearching(true);
     try {
-      const results = await searchUsersByEmail(searchQuery.trim().toLowerCase());
+      const result = await searchUsersByEmail(searchQuery.trim().toLowerCase(), { limit: 10 });
+      const results = result.users;
       
       // Filter out current user and already selected users
       const filteredResults = results.filter(

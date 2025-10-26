@@ -42,6 +42,7 @@ export const sendMessageToFirestore = async (
     const conversationRef = doc(firestore, 'conversations', conversationId);
     await updateDoc(conversationRef, {
       lastMessage: {
+        id: messageDoc.id, // Include the message ID
         text: messageData.content.text,
         senderId: messageData.senderId,
         timestamp: Timestamp.now(),

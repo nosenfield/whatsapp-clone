@@ -196,6 +196,41 @@ export const uploadImageMessage = async (
 };
 
 /**
+ * Upload profile image to Firebase Storage
+ * @param userId - The user ID
+ * @param imageUri - Local URI of the image
+ * @returns Download URL for the profile image
+ */
+export const uploadProfileImage = async (
+  userId: string,
+  imageUri: string
+): Promise<string> => {
+  try {
+    console.log('📷 Starting profile image upload for user:', userId);
+
+    // Compress image for profile
+    console.log('📷 Compressing profile image...');
+    const compressed = await compressImage(imageUri);
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const imagePath = `profile-images/${userId}/profile_${timestamp}.jpg`;
+
+    // Upload image
+    console.log('📷 Uploading profile image...');
+    await uploadImage(compressed.uri, imagePath);
+    const imageUrl = await getDownloadURL(imagePath);
+
+    console.log('✅ Profile image upload complete');
+
+    return imageUrl;
+  } catch (error) {
+    console.error('❌ Error uploading profile image:', error);
+    throw error;
+  }
+};
+
+/**
  * Delete image from Firebase Storage
  * @param imageUrl - The download URL of the image
  */
