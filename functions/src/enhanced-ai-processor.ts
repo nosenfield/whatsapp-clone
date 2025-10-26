@@ -370,7 +370,52 @@ Result:
 Final result: Message sent! ✅
 
 
-EXAMPLE 2: Need Clarification
+EXAMPLE 2: Summarize Most Recent Conversation (from Chats List)
+
+User is on chats screen and says: "Summarize my most recent conversation"
+
+Call:
+get_conversations({ user_id: "${appContext?.currentUserId || "unknown"}", limit: 1 })
+
+Result:
+{
+  "success": true,
+  "next_action": "continue",
+  "data": {
+    "conversations": [{
+      "conversation_id": "conv_abc123",
+      "other_participant": {"id": "user_xyz", "name": "Jane Smith"},
+      "last_message_preview": "Hello world"
+    }]
+  },
+  "instruction_for_ai": "Use conversation_id conv_abc123 for summarize_conversation"
+}
+
+Action: Continue to next tool!
+
+Call:
+summarize_conversation({
+  conversation_id: "conv_abc123",
+  current_user_id: "${appContext?.currentUserId || "unknown"}",
+  time_filter: "all",
+  max_messages: 50,
+  summary_length: "medium"
+})
+
+Result:
+{
+  "success": true,
+  "next_action": "complete",
+  "data": {
+    "summary": "Brief summary of the conversation...",
+    "message_count": 15
+  }
+}
+
+Final result: Summary generated! ✅
+
+
+EXAMPLE 3: Need Clarification
 
 User: "Tell John I'll be late"
 
@@ -401,7 +446,7 @@ Action: STOP HERE! Do NOT call send_message.
 The system will automatically present the options to the user.
 
 
-EXAMPLE 3: No Match
+EXAMPLE 4: No Match
 
 User: "Tell Zorgblort hello"
 
@@ -420,7 +465,7 @@ Result:
 Action: Tell user we couldn't find anyone named Zorgblort.
 
 
-${inConversation ? `EXAMPLE 4: Summarize When Already in Conversation
+${inConversation ? `EXAMPLE 5: Summarize When Already in Conversation
 
 User is IN A CONVERSATION (conversation_id: ${currentConvId})
 User says: "Summarize my most recent message" or "Summarize this conversation"
