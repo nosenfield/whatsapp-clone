@@ -15,6 +15,7 @@ import { useAICommands } from '../hooks/useAICommands';
 import { createUserFriendlyError } from '../utils/ai-error-handling';
 import { ClarificationModal, ClarificationData, ClarificationOption } from './ClarificationModal';
 import { SummaryModal, SummaryData } from './SummaryModal';
+import { AIAnalysisModal } from './AIAnalysisModal';
 
 interface AICommandButtonProps {
   currentConversationId?: string;
@@ -24,10 +25,9 @@ interface AICommandButtonProps {
 
 const SUGGESTED_COMMANDS = [
   "Tell John I'm on my way",
-  "Open my conversation with Sarah",
-  "Start a new conversation with Alex",
-  "Summarize the most recent message",
-  "Summarize my most recent message",
+  "Who is coming to the party tonight?",
+  "What did Sarah say about the deadline?",
+  "When is the meeting scheduled?",
   "Summarize this conversation",
 ];
 
@@ -43,6 +43,8 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
   const [originalCommand, setOriginalCommand] = useState('');
   const [isSummaryVisible, setIsSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+  const [analysisData, setAnalysisData] = useState<any>(null);
   
   const { executeCommand, continueCommandWithClarification, isProcessing, error } = useAICommands(currentConversationId, appContext);
 
@@ -69,6 +71,13 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
         setOriginalCommand(result.original_command || command.trim());
         setIsClarificationVisible(true);
         setIsModalVisible(false); // Hide command modal
+      } else if (result.action?.type === 'analysis' && result.action?.payload) {
+        console.log('✅ Showing analysis modal');
+        // Show analysis modal
+        setAnalysisData(result.action.payload);
+        setIsAnalysisVisible(true);
+        setIsModalVisible(false); // Hide command modal
+        setCommand('');
       } else if (result.action?.type === 'summary' && result.action?.payload) {
         console.log('✅ Showing summary modal');
         // Show summary modal
@@ -242,6 +251,13 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
         visible={isSummaryVisible}
         summaryData={summaryData}
         onClose={handleSummaryClose}
+      />
+
+      {/* Analysis Modal */}
+      <AIAnalysisModal
+        visible={isAnalysisVisible}
+        analysisData={analysisData}
+        onClose={() => setIsAnalysisVisible(false)}
       />
     </>
   );
