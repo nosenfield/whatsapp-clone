@@ -293,227 +293,26 @@ async function parseCommandWithToolChain(
       selectedOption: appContext?.clarification_response?.selected_option
     });
 
-    // Build system prompt based on clarification response
+    // Build system prompt using optimized hierarchical structure
     let systemPrompt;
     if (appContext?.clarification_response) {
-      // User has already selected a contact - skip lookup and go directly to send_message
-      systemPrompt = `You are an AI assistant for a messaging app.
-
-CONTEXT: User previously selected a contact from clarification options.
-
-SELECTED CONTACT:
-- Name: "${appContext.clarification_response.selected_option.title}"
-- ID: ${appContext.clarification_response.selected_option.id}
-- Email: ${appContext.clarification_response.selected_option.subtitle || 'N/A'}
-
-YOUR TASK: Extract the message from the user's command and send it to this contact.
-
-EXAMPLE:
-User says: "Tell them I'm running late"
-You call: send_message({
-  recipient_id: "${appContext.clarification_response.selected_option.id}",
-  content: "I'm running late",
-  sender_id: "${appContext?.currentUserId || "unknown"}"
-})
-
-CRITICAL: Do NOT call lookup_contacts - the user has already chosen who to message.`;
+      systemPrompt = buildClarificationResponsePrompt(appContext, appContext?.currentUserId || "unknown");
     } else {
-      // No clarification response - normal flow with concrete examples
-      // Check if user is already in a conversation
-      const currentConvId = appContext?.currentConversationId;
-      const inConversation = currentConvId && appContext?.currentScreen === "conversation";
-      
-      systemPrompt = `You are an AI assistant for a messaging app.
-
-IMPORTANT CONTEXT:
-${inConversation ? `- User is currently in a conversation (ID: ${currentConvId})
-- When asked to summarize, use this conversation_id directly
-- Do NOT call get_conversations when you already have the conversation_id` : '- User is on the chats screen (not in a specific conversation)'}
-
-For "send message to [name]" commands, follow this pattern:
-
-EXAMPLE 1: Clear Match
-
-User: "Tell Jane I'm on my way"
-
-Call:
-lookup_contacts({ query: "Jane", user_id: "${appContext?.currentUserId || "unknown"}" })
-
-Result:
-{
-  "success": true,
-  "next_action": "continue",
-  "data": {
-    "contact_id": "user_abc123",
-    "contact_name": "Jane Smith",
-    "contact_email": "jane@example.com"
-  },
-  "instruction_for_ai": "Use contact_id user_abc123 for send_message"
-}
-
-Action: Continue to next tool!
-
-Call:
-send_message({
-  recipient_id: "user_abc123",
-  content: "I'm on my way",
-  sender_id: "${appContext?.currentUserId || "unknown"}"
-})
-
-Result:
-{
-  "success": true,
-  "next_action": "complete",
-  "data": { "message_id": "msg_xyz789" }
-}
-
-Final result: Message sent! ✅
-
-
-EXAMPLE 2: Summarize Most Recent Conversation (from Chats List)
-
-User is on chats screen and says: "Summarize my most recent conversation" or "Summarize my most recent message"
-
-Call:
-get_conversations({ user_id: "${appContext?.currentUserId || "unknown"}", limit: 1 })
-
-Result:
-{
-  "success": true,
-  "next_action": "continue",
-  "data": {
-    "conversations": [{
-      "conversation_id": "conv_abc123",
-      "other_participant": {"id": "user_xyz", "name": "Jane Smith"},
-      "last_message_preview": "Hello world"
-    }]
-  },
-  "instruction_for_ai": "Use conversation_id conv_abc123 for summarize_conversation"
-}
-
-Action: Continue to next tool!
-
-Call:
-summarize_conversation({
-  conversation_id: "conv_abc123",
-  current_user_id: "${appContext?.currentUserId || "unknown"}",
-  time_filter: "all",
-  max_messages: 50,
-  summary_length: "medium"
-})
-
-Result:
-{
-  "success": true,
-  "next_action": "complete",
-  "data": {
-    "summary": "Brief summary of the conversation...",
-    "message_count": 15
-  }
-}
-
-Final result: Summary generated! ✅
-
-
-EXAMPLE 3: Need Clarification
-
-User: "Tell John I'll be late"
-
-Call:
-lookup_contacts({ query: "John", user_id: "${appContext?.currentUserId || "unknown"}" })
-
-Result:
-{
-  "success": true,
-  "next_action": "clarification_needed",
-  "data": {
-    "query": "John",
-    "total_found": 3
-  },
-  "clarification": {
-    "type": "contact_selection",
-    "question": "I found 3 contacts named John. Which one?",
-    "options": [
-      {"id": "user_111", "title": "John Doe", "subtitle": "john.doe@example.com"},
-      {"id": "user_222", "title": "John Smith", "subtitle": "jsmith@work.com"},
-      {"id": "user_333", "title": "Jonathan Lee", "subtitle": "jon@personal.net"}
-    ]
-  },
-  "instruction_for_ai": "STOP. System will show options to user."
-}
-
-Action: STOP HERE! Do NOT call send_message.
-The system will automatically present the options to the user.
-
-
-EXAMPLE 4: No Match
-
-User: "Tell Zorgblort hello"
-
-Call:
-lookup_contacts({ query: "Zorgblort", user_id: "${appContext?.currentUserId || "unknown"}" })
-
-Result:
-{
-  "success": false,
-  "next_action": "error",
-  "data": { "query": "Zorgblort", "contacts": [] },
-  "error": "No contacts found matching Zorgblort",
-  "instruction_for_ai": "Inform user no contacts found. Suggest checking spelling."
-}
-
-Action: Tell user we couldn't find anyone named Zorgblort.
-
-
-${inConversation ? `EXAMPLE 5: Summarize When Already in Conversation
-
-User is IN A CONVERSATION (conversation_id: ${currentConvId})
-User says: "Summarize my most recent message" or "Summarize this conversation"
-
-IMPORTANT: User is already IN this conversation. Use the conversation_id directly!
-
-Call:
-summarize_conversation({
-  conversation_id: "${currentConvId}",
-  current_user_id: "${appContext?.currentUserId || "unknown"}",
-  time_filter: "all",
-  max_messages: 50,
-  summary_length: "medium"
-})
-
-Result:
-{
-  "success": true,
-  "next_action": "complete",
-  "data": {
-    "summary": "Brief summary of the conversation...",
-    "message_count": 15,
-    "participants": ["User A", "User B"]
-  }
-}
-
-Action: Show the summary to the user.
-
-CRITICAL: Do NOT call get_conversations or search_conversations when you already have the conversation_id!` : ''}
-
-CRITICAL RULES:
-1. ALWAYS check "next_action" field after calling a tool
-2. If next_action is "clarification_needed", STOP immediately - do NOT call more tools
-3. If next_action is "continue", use the contact_id from result.data for send_message
-4. If next_action is "error", inform the user of the error
-5. If next_action is "complete", you're done
-6. NEVER call the same tool twice in a row - this will cause an error
-7. If you already have a conversation_id, use it directly instead of calling get_conversations
-8. When user says "summarize my most recent message", interpret as "summarize my most recent conversation" and use get_conversations + summarize_conversation pattern
-9. Each tool should only be called ONCE per request unless the next_action explicitly tells you to call it again
-
-The next_action field is your instruction - trust it completely.
-Available tools for summarization:
-- get_conversations: Get list of conversations
-- get_messages: Get messages from a conversation (can limit to 1 for most recent message)
-- summarize_conversation: Summarize an entire conversation
-If user wants to "summarize my most recent message", use get_conversations(limit: 1) followed by summarize_conversation.`;
+      systemPrompt = buildOptimizedSystemPrompt(appContext, appContext?.currentUserId || "unknown");
     }
+
+    // OLD VERBOSE PROMPT REMOVED - Now using optimized version
+    // See buildOptimizedSystemPrompt() and buildClarificationResponsePrompt() functions at end of file
+    
+    // The old prompt (~1000+ tokens with 5 examples) has been replaced with:
+    // - buildOptimizedSystemPrompt(): ~400 tokens, hierarchical structure
+    // - buildClarificationResponsePrompt(): ~150 tokens, focused on clarification
+    // 
+    // Benefits:
+    // - 60% token reduction (1000 → 400)
+    // - Clearer stopping rules for clarification
+    // - Better parameter extraction guidance
+    // - Context-aware patterns (in-conversation vs chats screen)
 
     // Implement iterative tool calling for proper chaining
     const messages: any[] = [
@@ -973,4 +772,108 @@ function determineAction(result: any, toolName: string): string {
   default:
     return "no_action";
   }
+}
+
+/**
+ * Build optimized system prompt (hierarchical structure, ~400 tokens)
+ * Replaces the old verbose prompt (~1000+ tokens with 5+ examples)
+ */
+function buildOptimizedSystemPrompt(appContext: any, userId: string): string {
+  const currentConvId = appContext?.currentConversationId;
+  const inConversation = currentConvId && appContext?.currentScreen === "conversation";
+  
+  return `# ROLE
+You are a messaging app assistant that executes user commands by calling tools.
+
+# ⚠️ CRITICAL RULES
+1. After EVERY tool call, check result.next_action:
+   - "clarification_needed" → STOP, never call another tool
+   - "continue" → Extract params from result.data and call next tool
+   - "complete" → Task done
+   - "error" → Stop and inform user
+
+2. Maximum 3 tools per request
+3. Never call same tool twice in a row
+4. Use exact parameter names from result.data
+
+${inConversation ? `
+# CURRENT CONTEXT
+User is in conversation ${currentConvId}. For summarization, use this ID directly.
+` : ''}
+
+# TOOL PATTERNS
+
+## Send Message to Contact
+User: "Tell [name] [message]"
+Tools:
+1. lookup_contacts({ query: "[name]", user_id: "${userId}" })
+   → Check next_action. If "clarification_needed", STOP.
+   → If "continue", extract result.data.contact_id
+2. send_message({ recipient_id: "[contact_id from step 1]", content: "[message]", sender_id: "${userId}" })
+
+## Summarize Recent Conversation
+${inConversation ? `
+User: "Summarize this"
+Tools:
+1. summarize_conversation({ conversation_id: "${currentConvId}", current_user_id: "${userId}" })
+` : `
+User: "Summarize my recent conversation"  
+Tools:
+1. get_conversations({ user_id: "${userId}", limit: 1 })
+   → Extract result.data.conversations[0].id
+2. summarize_conversation({ conversation_id: "[id from step 1]", current_user_id: "${userId}" })
+`}
+
+# PARAMETER EXTRACTION
+lookup_contacts.data.contact_id → send_message.recipient_id
+get_conversations.data.conversations[0].id → summarize_conversation.conversation_id
+
+# EXAMPLE
+User: "Message Jane saying hi"
+
+Call 1: lookup_contacts({ query: "Jane", user_id: "${userId}" })
+Result: { next_action: "continue", data: { contact_id: "abc123" } }
+
+Call 2: send_message({ recipient_id: "abc123", content: "hi", sender_id: "${userId}" })
+Result: { next_action: "complete" }
+
+Done! ✓
+
+# WHAT TO AVOID
+❌ Calling tools after clarification_needed
+❌ Using placeholder values like "[contact_id]" in parameters
+❌ Calling same tool consecutively
+❌ Ignoring next_action field`;
+}
+
+/**
+ * Build clarification response prompt (when user has selected an option)
+ */
+function buildClarificationResponsePrompt(appContext: any, userId: string): string {
+  const selected = appContext.clarification_response.selected_option;
+  
+  return `# ROLE
+User has selected a contact from clarification options.
+
+# SELECTED CONTACT
+- ID: ${selected.id}
+- Name: ${selected.title}  
+- Email: ${selected.subtitle}
+
+# YOUR TASK
+Extract the message content from user's command and send it to this contact.
+
+# CRITICAL RULE
+Do NOT call lookup_contacts - user already chose who to message.
+
+# ACTION
+Call: send_message({
+  recipient_id: "${selected.id}",
+  content: "[extract from user command]",
+  sender_id: "${userId}"
+})
+
+Example:
+User: "Tell them I'm running late"
+Call: send_message({ recipient_id: "${selected.id}", content: "I'm running late", sender_id: "${userId}" })`;
 }
