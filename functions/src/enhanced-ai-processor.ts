@@ -286,65 +286,64 @@ async function parseCommandWithToolChain(
       apiKey: openaiApiKey,
     });
 
-    const systemPrompt = `You are an AI assistant for a messaging app.
+    // Debug logging for clarification response
+    logger.info("🔍 Debug clarification response:", {
+      hasClarificationResponse: !!appContext?.clarification_response,
+      clarificationResponse: appContext?.clarification_response,
+      selectedOption: appContext?.clarification_response?.selected_option
+    });
+
+    // Build system prompt based on clarification response
+    let systemPrompt;
+    if (appContext?.clarification_response) {
+      // User has already selected a contact - skip lookup and go directly to send_message
+      systemPrompt = `You are an AI assistant for a messaging app.
+
+CRITICAL: The user has already selected a contact from a previous clarification.
+
+SELECTED CONTACT:
+- Name: "${appContext.clarification_response.selected_option.title}"
+- Contact ID: ${appContext.clarification_response.selected_option.id}
+- Email: ${appContext.clarification_response.selected_option.subtitle}
+
+ACTION REQUIRED:
+For "send message to [name]" commands, you MUST:
+1. Call send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="[extract message from command]", sender_id="${appContext?.currentUserId || "unknown"}")
+2. Do NOT call lookup_contacts - the user has already selected the contact
+
+EXAMPLE:
+User: "Tell John I'm on my way"
+You call: send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="I'm on my way", sender_id="${appContext?.currentUserId || "unknown"}")
+Result: Message sent successfully
+
+CRITICAL RULES:
+- NEVER call lookup_contacts when clarification_response is present
+- ALWAYS use the selected_option.id for send_message
+- Extract the message content from the user's command`;
+    } else {
+      // No clarification response - normal flow
+      systemPrompt = `You are an AI assistant for a messaging app.
 
 TOOL CHAINING RULES:
 
 1. For "send message to [name]" commands:
-   ${appContext?.clarification_response ? `
-   - User has selected contact: "${appContext.clarification_response.selected_option.title}"
-   - Contact ID: ${appContext.clarification_response.selected_option.id}
-   - Action: Call send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="[message]", sender_id="${appContext?.currentUserId || "unknown"}")
-   ` : `
    - Step 1: Call lookup_contacts(query="[name]", user_id="${appContext?.currentUserId || "unknown"}")
    - Step 2: Check tool result's next_action field:
      * If "clarification_needed": STOP - system will present options automatically
      * If "continue": Use contact_id from result.data for next tool
      * If "error": Inform user of the error
    - Step 3 (only if step 2 was "continue"): Call send_message(recipient_id="[contact_id]", content="[message]", sender_id="${appContext?.currentUserId || "unknown"}")
-   `}
+`;
+    }
+
+    // Add common rules to both prompts
+    systemPrompt += `
 
 CRITICAL RULES:
 - ALWAYS check result.next_action after EACH tool call
 - If next_action is "clarification_needed", do NOT call any more tools
 - Trust the tool's next_action field completely
 - Use contact_id from result.data, never make up IDs
-
-EXAMPLE FLOWS:
-
-Example 1 - Needs Clarification:
-User: "Tell John I'm running late"
-You call: lookup_contacts(query="John", user_id="${appContext?.currentUserId || "unknown"}")
-Result: {
-  "success": true,
-  "data": {"contacts": [...]},
-  "next_action": "clarification_needed",
-  "clarification": {
-    "type": "contact_selection",
-    "question": "I found 3 contacts named John. Which one?",
-    "options": [...]
-  }
-}
-Action: STOP - do not call send_message
-
-Example 2 - Clear Match:
-User: "Tell Jane hello"  
-You call: lookup_contacts(query="Jane", user_id="${appContext?.currentUserId || "unknown"}")
-Result: {
-  "success": true,
-  "data": {"contact_id": "user_abc123", "contact_name": "Jane Smith"},
-  "next_action": "continue"
-}
-You call: send_message(recipient_id="user_abc123", content="hello", sender_id="${appContext?.currentUserId || "unknown"}")
-Result: {"success": true, "next_action": "complete"}
-Done!
-
-Example 3 - After Clarification:
-User: "Tell John I'm running late" (user previously selected John from clarification)
-Context: User selected "John Doe (john.doe@example.com)" with ID "user_xyz789"
-You call: send_message(recipient_id="user_xyz789", content="I'm running late", sender_id="${appContext?.currentUserId || "unknown"}")
-Result: {"success": true, "next_action": "complete"}
-Done!
 
 SINGLE TOOL COMMANDS (no chaining needed):
 - "Show me my recent conversations" → get_conversations
