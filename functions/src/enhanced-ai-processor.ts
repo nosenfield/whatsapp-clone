@@ -528,6 +528,38 @@ The next_action field is your instruction - trust it completely.`;
           }
         }
         
+        // Validate parameters before adding to tool chain
+        const validation = ToolChainParameterMapper.validateParameters(toolName, parameters);
+        
+        if (!validation.valid) {
+          logger.error("❌ Invalid Parameters - Skipping Tool", {
+            tool: toolName,
+            errors: validation.errors,
+            parameters: parameters
+          });
+          
+          // Add error to toolResults and continue
+          toolResults.push({
+            success: false,
+            next_action: "error",
+            data: {},
+            error: `Invalid parameters: ${validation.errors.join(", ")}`,
+            metadata: { toolName }
+          });
+          
+          // Add to messages for AI to see
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({
+              success: false,
+              error: `Invalid parameters: ${validation.errors.join(", ")}`,
+            }),
+          });
+          
+          continue; // Skip this tool, continue to next
+        }
+
         // Add to tool chain
         toolChain.push({
           tool: toolName,
@@ -774,13 +806,7 @@ function processToolChainResults(results: any[], toolChain: any[]): any {
 function generateChainResponse(results: any[], toolChain: any[]): string {
   const toolNames = toolChain.map((tc) => tc.tool);
 
-  if (toolNames.includes("request_clarification")) {
-    const clarificationResult = results.find(r => r.toolName === "request_clarification");
-    if (clarificationResult?.success && clarificationResult.data?.question) {
-      return `I need clarification: ${clarificationResult.data.question}`;
-    }
-    return "Clarification requested.";
-  } else if (toolNames.includes("summarize_conversation")) {
+  if (toolNames.includes("summarize_conversation")) {
     const summarizeResult = results.find(r => r.toolName === "summarize_conversation");
     if (summarizeResult?.success && summarizeResult.data?.summary) {
       return `Here's a summary of your conversation:\n\n${summarizeResult.data.summary}`;

@@ -378,6 +378,17 @@ export class ToolChainExecutor {
         results.push(result);
         context.previousResults.set(tool.name, result);
 
+        // Validate result format
+        const validation = this.validateToolResult(result, tool.name);
+        if (!validation.valid) {
+          logger.error("❌ Invalid Tool Result Format", {
+            tool: tool.name,
+            errors: validation.errors,
+            result: result
+          });
+          // Continue anyway for now, but log the error
+        }
+
         // CHECK FOR STOP CONDITIONS IMMEDIATELY
         if (result.next_action === "clarification_needed") {
           logger.info("🛑 Chain Stopped - Clarification Needed", {
@@ -440,6 +451,51 @@ export class ToolChainExecutor {
     }
 
     return results;
+  }
+
+  private validateToolResult(result: any, toolName: string): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // Check required fields
+    if (typeof result.success !== "boolean") {
+      errors.push("Missing or invalid 'success' field");
+    }
+
+    const validActions = ["continue", "clarification_needed", "complete", "error"];
+    if (!result.next_action || !validActions.includes(result.next_action)) {
+      errors.push(`Invalid next_action: "${result.next_action}". Must be one of: ${validActions.join(", ")}`);
+    }
+
+    if (result.data === undefined) {
+      errors.push("Missing 'data' field");
+    }
+
+    // Validate clarification structure if present
+    if (result.next_action === "clarification_needed") {
+      if (!result.clarification) {
+        errors.push("next_action is 'clarification_needed' but no clarification object provided");
+      } else {
+        if (!result.clarification.question) {
+          errors.push("clarification.question is required");
+        }
+        if (!Array.isArray(result.clarification.options) || result.clarification.options.length === 0) {
+          errors.push("clarification.options must be a non-empty array");
+        } else {
+          // Validate each option
+          result.clarification.options.forEach((opt: any, idx: number) => {
+            if (!opt.id) errors.push(`clarification.options[${idx}].id is required`);
+            if (!opt.title) errors.push(`clarification.options[${idx}].title is required`);
+          });
+        }
+      }
+    }
+
+    // Validate error message if next_action is error
+    if (result.next_action === "error" && !result.error) {
+      errors.push("next_action is 'error' but no error message provided");
+    }
+
+    return { valid: errors.length === 0, errors };
   }
 }
 

@@ -139,4 +139,68 @@ export class ToolChainParameterMapper {
         return toToolParams;
     }
   }
+
+  /**
+   * Validate parameters before tool execution
+   */
+  static validateParameters(
+    toolName: string,
+    params: Record<string, any>
+  ): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    switch (toolName) {
+      case "send_message":
+        if (!params.sender_id) {
+          errors.push("Missing required parameter: sender_id");
+        }
+        if (!params.content) {
+          errors.push("Missing required parameter: content");
+        }
+        // Check for recipient_id or conversation_id
+        if (!params.recipient_id && !params.conversation_id) {
+          errors.push("Missing required parameter: recipient_id or conversation_id");
+        }
+        // Check for placeholder values
+        if (params.recipient_id && (params.recipient_id.includes("[") || params.recipient_id.includes("]"))) {
+          errors.push(`recipient_id appears to be a placeholder: ${params.recipient_id}`);
+        }
+        break;
+
+      case "lookup_contacts":
+        if (!params.query) {
+          errors.push("Missing required parameter: query");
+        }
+        if (!params.user_id) {
+          errors.push("Missing required parameter: user_id");
+        }
+        break;
+
+      case "resolve_conversation":
+        if (!params.contact_identifier && !params.conversation_id) {
+          errors.push("Missing required parameter: contact_identifier or conversation_id");
+        }
+        break;
+
+      case "summarize_conversation":
+        if (!params.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        break;
+
+      case "get_messages":
+        if (!params.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        break;
+
+      case "get_conversation_info":
+        if (!params.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        break;
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
 }
