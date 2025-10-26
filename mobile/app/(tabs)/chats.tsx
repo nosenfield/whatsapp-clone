@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -28,14 +28,25 @@ export default function ChatsScreen() {
     currentUser?.id
   );
   const aiContext = useAICommandContext();
+  const [isManualRefresh, setIsManualRefresh] = useState(false);
 
-  // Refetch when screen comes into focus
+  // Refetch when screen comes into focus (auto-refresh - no spinner)
   useFocusEffect(
     useCallback(() => {
       console.log('🔍 Chats screen focused - refetching conversations');
       refetch();
     }, [refetch])
   );
+
+  // Handle manual pull-to-refresh
+  const handleManualRefresh = useCallback(async () => {
+    setIsManualRefresh(true);
+    try {
+      await refetch();
+    } finally {
+      setIsManualRefresh(false);
+    }
+  }, [refetch]);
 
   const handleNewChat = () => {
     // Show action sheet to choose between new conversation or new group
@@ -150,8 +161,8 @@ export default function ChatsScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching || isFetching}
-              onRefresh={refetch}
+              refreshing={isManualRefresh}
+              onRefresh={handleManualRefresh}
               tintColor="#007AFF"
             />
           }
