@@ -92,9 +92,176 @@ export class ToolChainValidator {
       "resolve_conversation → send_message": "Send message to existing conversation",
       "get_messages → summarize_conversation": "Summarize conversation messages",
       "get_conversations": "List conversations",
-      "lookup_contacts": "Search for contacts"
+      "lookup_contacts": "Search for contacts",
+      "analyze_conversation": "Extract information from conversation",
+      "summarize_conversation": "Summarize conversation"
     };
 
     return patterns[toolNames] || "Unknown pattern";
+  }
+
+  /**
+   * Pre-flight validation before AI generates tool chain
+   * Validates context and requirements
+   */
+  static validatePreFlight(
+    command: string,
+    appContext: any
+  ): {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    suggestions: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const suggestions: string[] = [];
+
+    const inConversation = appContext?.currentConversationId && 
+                          appContext?.currentScreen === "conversation";
+    const currentUserId = appContext?.currentUserId;
+
+    // Rule 1: Information extraction requires being in a conversation
+    const informationQueries = [
+      /who (is|are|was|were|confirmed|said|mentioned)/i,
+      /what (did|does|is|was|were|about)/i,
+      /when (is|was|did|does)/i,
+      /where (is|was|did|does)/i,
+      /how many/i,
+      /list (all|the)/i
+    ];
+
+    const isInformationQuery = informationQueries.some(pattern => pattern.test(command));
+
+    if (isInformationQuery && !inConversation) {
+      warnings.push(
+        "Information extraction query detected but user is not in a conversation. " +
+        "AI should inform user to open the conversation first."
+      );
+      suggestions.push("Inform user: 'Please open the conversation you want to ask about first.'");
+    }
+
+    // Rule 2: User ID must be present
+    if (!currentUserId) {
+      errors.push("Missing current_user_id in appContext");
+    }
+
+    // Rule 3: Command should not be empty
+    if (!command || command.trim().length === 0) {
+      errors.push("Command is empty");
+    }
+
+    // Rule 4: Detect potential ambiguous commands
+    const ambiguousPatterns = [
+      { pattern: /tell (him|her|them)/i, warning: "Ambiguous pronoun - may need clarification" },
+      { pattern: /send (it|that|this)/i, warning: "Ambiguous reference - may need clarification" },
+      { pattern: /message (someone|somebody)/i, warning: "Vague recipient - will need clarification" }
+    ];
+
+    for (const {pattern, warning} of ambiguousPatterns) {
+      if (pattern.test(command)) {
+        warnings.push(warning);
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      suggestions
+    };
+  }
+
+  /**
+   * Validate tool parameters before execution
+   * More comprehensive than ToolChainParameterMapper.validateParameters
+   */
+  static validateToolParameters(
+    toolName: string,
+    parameters: any,
+    appContext?: any
+  ): {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Common validations
+    if (!parameters || typeof parameters !== "object") {
+      errors.push(`Parameters must be an object, got ${typeof parameters}`);
+      return {valid: false, errors, warnings};
+    }
+
+    // Tool-specific validations
+    switch (toolName) {
+      case "analyze_conversation":
+        if (!parameters.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        if (!parameters.current_user_id) {
+          errors.push("Missing required parameter: current_user_id");
+        }
+        if (!parameters.query || typeof parameters.query !== "string") {
+          errors.push("Missing or invalid parameter: query (must be string)");
+        }
+        if (parameters.max_messages && (typeof parameters.max_messages !== "number" || parameters.max_messages < 1)) {
+          errors.push("Invalid parameter: max_messages (must be positive number)");
+        }
+        break;
+
+      case "send_message":
+        if (!parameters.sender_id) {
+          errors.push("Missing required parameter: sender_id");
+        }
+        if (!parameters.content) {
+          errors.push("Missing required parameter: content");
+        }
+        if (!parameters.recipient_id && !parameters.conversation_id) {
+          errors.push("Missing required parameter: recipient_id or conversation_id");
+        }
+        // Check for placeholder values
+        if (parameters.recipient_id && /\[|\]/.test(parameters.recipient_id)) {
+          errors.push(`recipient_id appears to be a placeholder: ${parameters.recipient_id}`);
+        }
+        break;
+
+      case "lookup_contacts":
+        if (!parameters.query) {
+          errors.push("Missing required parameter: query");
+        }
+        if (!parameters.user_id) {
+          errors.push("Missing required parameter: user_id");
+        }
+        break;
+
+      case "summarize_conversation":
+        if (!parameters.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        if (!parameters.current_user_id) {
+          errors.push("Missing required parameter: current_user_id");
+        }
+        break;
+
+      case "get_conversations":
+        if (!parameters.user_id) {
+          errors.push("Missing required parameter: user_id");
+        }
+        break;
+
+      case "get_messages":
+        if (!parameters.conversation_id) {
+          errors.push("Missing required parameter: conversation_id");
+        }
+        break;
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings
+    };
   }
 }

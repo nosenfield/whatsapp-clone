@@ -12,6 +12,7 @@ import {LookupContactsTool} from "./lookup-contacts-tool";
 import {SendMessageTool} from "./send-message-tool";
 import {GetConversationInfoTool} from "./get-conversation-info-tool";
 import {SummarizeConversationTool} from "./summarize-conversation-tool";
+import {AnalyzeConversationTool} from "./analyze-conversation-tool";
 
 // Create and configure the tool registry
 export function initializeToolRegistry(): AIToolRegistry {
@@ -25,6 +26,7 @@ export function initializeToolRegistry(): AIToolRegistry {
   registry.register(new SendMessageTool());
   registry.register(new GetConversationInfoTool());
   registry.register(new SummarizeConversationTool());
+  registry.register(new AnalyzeConversationTool());
 
   return registry;
 }

@@ -101,6 +101,31 @@ export const processEnhancedAICommand = onCall(
         maxChainLength,
       });
 
+      // Pre-flight validation
+      const preFlightValidation = ToolChainValidator.validatePreFlight(command, appContext);
+      
+      if (!preFlightValidation.valid) {
+        logger.error("Pre-flight validation failed", {
+          errors: preFlightValidation.errors,
+          command: command.substring(0, 100),
+        });
+        return {
+          success: false,
+          result: null,
+          response: `Invalid command: ${preFlightValidation.errors.join(", ")}`,
+          action: "show_error",
+          error: preFlightValidation.errors.join(", "),
+        };
+      }
+
+      // Log warnings and suggestions
+      if (preFlightValidation.warnings.length > 0) {
+        logger.warn("Pre-flight validation warnings", {
+          warnings: preFlightValidation.warnings,
+          suggestions: preFlightValidation.suggestions,
+        });
+      }
+
       // Parse command and determine tool chain
       const parsedCommand = await parseCommandWithToolChain(command, appContext, enableToolChaining);
 
@@ -440,13 +465,14 @@ async function parseCommandWithToolChain(
           }
         }
         
-        // Validate parameters before adding to tool chain
-        const validation = ToolChainParameterMapper.validateParameters(toolName, parameters);
+        // Validate parameters before adding to tool chain (enhanced validation)
+        const validation = ToolChainValidator.validateToolParameters(toolName, parameters, appContext);
         
         if (!validation.valid) {
           logger.error("❌ Invalid Parameters - Skipping Tool", {
             tool: toolName,
             errors: validation.errors,
+            warnings: validation.warnings,
             parameters: parameters
           });
           
@@ -470,6 +496,15 @@ async function parseCommandWithToolChain(
           });
           
           continue; // Skip this tool, continue to next
+        }
+        
+        // Log warnings if present
+        if (validation.warnings.length > 0) {
+          logger.warn("⚠️ Parameter Validation Warnings", {
+            tool: toolName,
+            warnings: validation.warnings,
+            parameters: parameters
+          });
         }
 
         // Add to tool chain (only if not already present - deduplicate across iterations)
@@ -803,7 +838,7 @@ User is in conversation ${currentConvId}. For summarization, use this ID directl
 
 # TOOL PATTERNS
 
-## Send Message to Contact
+## Pattern 1: Send Message to Contact
 User: "Tell [name] [message]"
 Tools:
 1. lookup_contacts({ query: "[name]", user_id: "${userId}" })
@@ -811,7 +846,7 @@ Tools:
    → If "continue", extract result.data.contact_id
 2. send_message({ recipient_id: "[contact_id from step 1]", content: "[message]", sender_id: "${userId}" })
 
-## Summarize Recent Conversation
+## Pattern 2: Summarize Conversation
 ${inConversation ? `
 User: "Summarize this"
 Tools:
@@ -824,9 +859,39 @@ Tools:
 2. summarize_conversation({ conversation_id: "[id from step 1]", current_user_id: "${userId}" })
 `}
 
+## Pattern 3: Extract Information from Conversation
+${inConversation ? `
+User asks: "Who is coming?", "What did John say about X?", "When is the meeting?", "Who confirmed?"
+Context: User is in conversation ${currentConvId}
+Tools:
+1. analyze_conversation({ 
+     conversation_id: "${currentConvId}", 
+     current_user_id: "${userId}",
+     query: "[user's exact question]",
+     max_messages: 50,
+     use_rag: true
+   })
+   → Returns: Direct answer to user's question based on conversation content
+
+Examples:
+- "Who is coming to the party tonight?" → analyze_conversation with query "Who is coming to the party tonight?"
+- "Did anyone confirm for the meeting?" → analyze_conversation with query "Who confirmed for the meeting?"
+- "What did Sarah say about the deadline?" → analyze_conversation with query "What did Sarah say about the deadline?"
+` : `
+User asks information questions but is NOT in a conversation.
+Action: Inform user they need to be in a specific conversation to extract information from it.
+`}
+
 # PARAMETER EXTRACTION
 lookup_contacts.data.contact_id → send_message.recipient_id
 get_conversations.data.conversations[0].id → summarize_conversation.conversation_id
+
+# QUERY CLASSIFICATION
+To decide which pattern to use, classify the user's intent:
+
+- Sending a message? → Pattern 1 (lookup_contacts + send_message)
+- Want a summary of conversation? → Pattern 2 (summarize_conversation)
+- Asking "who/what/when/where" about conversation content? → Pattern 3 (analyze_conversation)
 
 # EXAMPLE
 User: "Message Jane saying hi"
@@ -843,7 +908,8 @@ Done! ✓
 ❌ Calling tools after clarification_needed
 ❌ Using placeholder values like "[contact_id]" in parameters
 ❌ Calling same tool consecutively
-❌ Ignoring next_action field`;
+❌ Ignoring next_action field
+❌ Using summarize_conversation when user wants specific information (use analyze_conversation instead)`;
 }
 
 /**
