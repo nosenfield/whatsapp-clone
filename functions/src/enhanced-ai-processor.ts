@@ -319,7 +319,16 @@ You call: send_message({
 CRITICAL: Do NOT call lookup_contacts - the user has already chosen who to message.`;
     } else {
       // No clarification response - normal flow with concrete examples
+      // Check if user is already in a conversation
+      const currentConvId = appContext?.currentConversationId;
+      const inConversation = currentConvId && appContext?.currentScreen === "conversation";
+      
       systemPrompt = `You are an AI assistant for a messaging app.
+
+IMPORTANT CONTEXT:
+${inConversation ? `- User is currently in a conversation (ID: ${currentConvId})
+- When asked to summarize, use this conversation_id directly
+- Do NOT call get_conversations when you already have the conversation_id` : '- User is on the chats screen (not in a specific conversation)'}
 
 For "send message to [name]" commands, follow this pattern:
 
@@ -411,12 +420,45 @@ Result:
 Action: Tell user we couldn't find anyone named Zorgblort.
 
 
+${inConversation ? `EXAMPLE 4: Summarize When Already in Conversation
+
+User is IN A CONVERSATION (conversation_id: ${currentConvId})
+User says: "Summarize my most recent message" or "Summarize this conversation"
+
+IMPORTANT: User is already IN this conversation. Use the conversation_id directly!
+
+Call:
+summarize_conversation({
+  conversation_id: "${currentConvId}",
+  current_user_id: "${appContext?.currentUserId || "unknown"}",
+  time_filter: "all",
+  max_messages: 50,
+  summary_length: "medium"
+})
+
+Result:
+{
+  "success": true,
+  "next_action": "complete",
+  "data": {
+    "summary": "Brief summary of the conversation...",
+    "message_count": 15,
+    "participants": ["User A", "User B"]
+  }
+}
+
+Action: Show the summary to the user.
+
+CRITICAL: Do NOT call get_conversations or search_conversations when you already have the conversation_id!` : ''}
+
 CRITICAL RULES:
 1. ALWAYS check "next_action" field after calling a tool
 2. If next_action is "clarification_needed", STOP immediately - do NOT call more tools
 3. If next_action is "continue", use the contact_id from result.data for send_message
 4. If next_action is "error", inform the user of the error
 5. If next_action is "complete", you're done
+6. Do NOT call duplicate tools in a row (e.g., get_conversations twice in a row)
+7. If you already have a conversation_id, use it directly instead of calling get_conversations
 
 The next_action field is your instruction - trust it completely.`;
     }
@@ -477,9 +519,20 @@ The next_action field is your instruction - trust it completely.`;
       }
 
       // Validation: Don't allow chaining after tools that might need clarification
+      // Also deduplicate consecutive duplicate tools
       const validatedToolCalls = [];
       for (let i = 0; i < toolCalls.length; i++) {
         const currentTool = toolCalls[i];
+        
+        // Skip if this is a duplicate of the previous tool
+        if (i > 0 && validatedToolCalls[validatedToolCalls.length - 1].function.name === currentTool.function.name) {
+          logger.info(`Skipping duplicate consecutive tool: ${currentTool.function.name}`, {
+            originalChainLength: toolCalls.length,
+            validatedChainLength: validatedToolCalls.length
+          });
+          continue; // Skip this duplicate tool
+        }
+        
         validatedToolCalls.push(currentTool);
         
         // If this tool might need clarification, don't include subsequent tools

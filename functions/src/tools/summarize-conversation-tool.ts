@@ -80,28 +80,36 @@ export class SummarizeConversationTool extends BaseAITool {
       if (messages.length === 0) {
         return {
           success: false,
+          next_action: "error",
+          data: {},
           error: "No messages found in the specified time range",
+          instruction_for_ai: "Inform user that no messages were found in the specified time range.",
           confidence: 0,
         };
       }
 
-      // Step 2: Generate summary using OpenAI
-      const summary = await this.generateSummary(messages, summary_length, current_user_id);
+      // Step 2: Get conversation details for participant information
+      const conversationData = await this.getConversationDetails(conversation_id, current_user_id);
 
-      // Step 3: Format result
+      // Step 3: Generate summary using OpenAI
+      const summary = await this.generateSummary(messages, summary_length, current_user_id, conversationData);
+
+      // Step 4: Format result
       const result = {
         summary: summary,
         message_count: messages.length,
         time_range: this.formatTimeRange(time_filter),
         conversation_id: conversation_id,
         summary_length: summary_length,
-        participants: this.extractParticipants(messages),
+        participants: this.extractParticipants(conversationData, messages),
         key_topics: this.extractKeyTopics(messages),
       };
 
       return {
         success: true,
+        next_action: "complete",
         data: result,
+        instruction_for_ai: "Summary generated successfully. No further action needed.",
         confidence: 0.9,
         metadata: {
           messagesProcessed: messages.length,
@@ -113,7 +121,10 @@ export class SummarizeConversationTool extends BaseAITool {
       logger.error("Error summarizing conversation:", error);
       return {
         success: false,
+        next_action: "error",
+        data: {},
         error: error instanceof Error ? error.message : "Unknown error",
+        instruction_for_ai: "Inform user that the conversation summary could not be generated.",
         confidence: 0,
       };
     }
@@ -168,20 +179,64 @@ export class SummarizeConversationTool extends BaseAITool {
     }
   }
 
-  private async generateSummary(messages: any[], summaryLength: string, userId: string): Promise<string> {
+  private async getConversationDetails(conversationId: string, userId: string): Promise<any> {
+    try {
+      const conversationDoc = await admin.firestore()
+        .collection("conversations")
+        .doc(conversationId)
+        .get();
+
+      if (!conversationDoc.exists) {
+        throw new Error("Conversation not found");
+      }
+
+      const data = conversationDoc.data();
+      
+      // Verify access
+      if (!data?.participants?.includes(userId)) {
+        throw new Error("Access denied");
+      }
+
+      return data;
+    } catch (error) {
+      logger.error("Error getting conversation details:", error);
+      throw error;
+    }
+  }
+
+  private async generateSummary(messages: any[], summaryLength: string, userId: string, conversationData?: any): Promise<string> {
     try {
       // Initialize OpenAI client using the environment config service
       const openai = new OpenAI({
         apiKey: getOpenAIApiKey(),
       });
 
+      // Get participant mapping for better names
+      const participantDetails = conversationData?.participantDetails || {};
+      const getParticipantName = (senderId: string) => {
+        if (senderId === userId) return "You";
+        const details = participantDetails[senderId];
+        return details?.displayName || details?.email || "Other";
+      };
+
       // Format messages for AI processing
       const formattedMessages = messages
         .reverse() // Show in chronological order
         .map(msg => {
-          const sender = msg.senderId === userId ? "You" : msg.senderName || "Other";
+          const sender = getParticipantName(msg.senderId);
           const timestamp = new Date(msg.timestamp?.toMillis() || msg.timestamp).toLocaleString();
-          return `${sender} (${timestamp}): ${msg.text || '[Media message]'}`;
+          
+          // Handle different message types
+          let content = '';
+          if (msg.content?.type === 'text') {
+            content = msg.content.text || '[Empty message]';
+          } else if (msg.content?.type === 'image') {
+            content = `[Image: ${msg.content.caption || 'No caption'}]`;
+          } else {
+            content = msg.text || '[Media message]';
+          }
+          
+          return `${sender} (${timestamp}): ${content}`;
         })
         .join('\n');
 
@@ -251,14 +306,27 @@ Summary:`;
     }
   }
 
-  private extractParticipants(messages: any[]): string[] {
-    const participants = new Set<string>();
-    messages.forEach(msg => {
-      if (msg.senderName) {
-        participants.add(msg.senderName);
-      }
-    });
-    return Array.from(participants);
+  private extractParticipants(conversationData: any, messages: any[]): string[] {
+    const participantNames = new Set<string>();
+    
+    // First, try to get participants from conversation document
+    if (conversationData?.participantDetails) {
+      Object.values(conversationData.participantDetails).forEach((details: any) => {
+        const name = details.displayName || details.email || 'Unknown';
+        participantNames.add(name);
+      });
+    }
+    
+    // If still empty, try to extract from messages
+    if (participantNames.size === 0) {
+      messages.forEach(msg => {
+        if (msg.senderName) {
+          participantNames.add(msg.senderName);
+        }
+      });
+    }
+    
+    return Array.from(participantNames);
   }
 
   private extractKeyTopics(messages: any[]): string[] {
@@ -268,8 +336,19 @@ Summary:`;
     const wordCounts: Record<string, number> = {};
     
     messages.forEach(msg => {
-      if (msg.text) {
-        const words = msg.text.toLowerCase().split(/\W+/);
+      let textToExtract = '';
+      
+      // Handle different message types
+      if (msg.content?.type === 'text' && msg.content.text) {
+        textToExtract = msg.content.text;
+      } else if (msg.content?.type === 'image' && msg.content.caption) {
+        textToExtract = msg.content.caption;
+      } else if (msg.text) {
+        textToExtract = msg.text;
+      }
+      
+      if (textToExtract) {
+        const words = textToExtract.toLowerCase().split(/\W+/);
         words.forEach((word: string) => {
           if (word.length > 3 && !commonWords.has(word)) {
             wordCounts[word] = (wordCounts[word] || 0) + 1;
@@ -278,9 +357,12 @@ Summary:`;
       }
     });
 
-    return Object.entries(wordCounts)
+    const topics = Object.entries(wordCounts)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5)
       .map(([word]: [string, number]) => word);
+    
+    // If no topics found, return empty array
+    return topics;
   }
 }
