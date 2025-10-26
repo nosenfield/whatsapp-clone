@@ -1,564 +1,524 @@
-# System Patterns
+# System Patterns and Architecture
 
-**Last Updated:** October 20, 2025
+## High-Level Architecture
 
----
-
-## Architectural Overview
-
-The system uses a three-tier architecture with local-first data access:
-
+### Mobile App Structure
 ```
-┌─────────────────────────────────────┐
-│      React Native Mobile App        │
-│  (UI Layer + Client State)          │
-└─────────────┬───────────────────────┘
-              │
-┌─────────────▼───────────────────────┐
-│      Local Data Layer (SQLite)      │
-│  (Cache + Offline Queue)            │
-└─────────────┬───────────────────────┘
-              │
-┌─────────────▼───────────────────────┐
-│      Firebase Backend               │
-│  (Firestore + RTDB + Functions)     │
-└─────────────────────────────────────┘
+mobile/
+├── app/                    # Expo Router pages (file-based routing)
+│   ├── (auth)/            # Authentication stack
+│   ├── (tabs)/            # Main app tabs
+│   └── conversation/      # Conversation screens
+├── src/
+│   ├── components/        # Reusable UI components
+│   ├── hooks/             # Custom React hooks (business logic)
+│   ├── services/          # Firebase, SQLite, API services
+│   ├── store/             # Zustand state management
+│   ├── types/             # TypeScript type definitions
+│   └── utils/             # Helper functions
 ```
 
----
+### Cloud Functions Structure
+```
+functions/
+├── src/
+│   ├── index.ts           # Main entry, exports all functions
+│   ├── notifications/     # Push notification logic
+│   ├── embeddings/        # RAG pipeline, embedding generation
+│   ├── features/          # Specialized AI features
+│   ├── helpers/           # Shared utilities
+│   └── enhanced-ai-processor.ts  # AI command processor
+```
 
-## Core Design Patterns
+## Design Patterns
 
-### 1. Dual Database Pattern
+### 1. Service Layer Pattern
+**Purpose**: Separate business logic from UI components
 
-**Pattern**: Use two complementary databases for different access patterns
-
-**Implementation**:
-- **Firestore**: Persistent, queryable data (messages, users, conversations)
-- **Realtime Database (RTDB)**: Ephemeral, high-frequency data (presence, typing)
-
-**Why**:
-- Firestore excels at complex queries but has higher latency (~100-300ms)
-- RTDB excels at speed (<50ms) but limited query capability
-- Different data has different requirements
-
-**Example**:
 ```typescript
-// Persistent message data → Firestore
-await firestore
-  .collection('conversations').doc(conversationId)
-  .collection('messages').add(message);
-
-// Ephemeral typing status → RTDB
-await realtimeDb
-  .ref(`typing/${conversationId}/${userId}`)
-  .set({ isTyping: true, timestamp: Date.now() });
-```
-
-**Trade-offs**:
-- ✅ Optimized for each use case
-- ✅ Cost-effective (RTDB cheaper for high-frequency writes)
-- ❌ More complex setup
-- ❌ Two databases to maintain
-
----
-
-### 2. Optimistic UI Pattern
-
-**Pattern**: Update UI immediately, sync with server in background
-
-**Flow**:
-```
-User Action → Instant UI Update → Background Server Sync → Reconcile
-```
-
-**Implementation**:
-1. Generate temporary local ID
-2. Insert into SQLite with `status: 'sending'`
-3. Update UI immediately (appears sent)
-4. Initiate Firebase write
-5. On success: Replace local ID with server ID
-6. On failure: Show retry option
-
-**Example**:
-```typescript
-// 1. Optimistic update
-const tempId = generateTempId();
-const optimisticMessage = {
-  localId: tempId,
-  status: 'sending',
-  ...messageData
+// services/firebase-firestore.ts
+export const firestoreService = {
+  createUser: (userId: string, userData: User) => { ... },
+  sendMessage: (conversationId: string, message: Message) => { ... }
 };
 
-// 2. Update local state immediately
-await database.insertMessage(optimisticMessage);
-messageStore.addOptimisticMessage(optimisticMessage);
-
-// 3. Sync to server in background
-try {
-  const serverMessage = await firestore.addMessage(messageData);
-  await database.updateMessage(tempId, { id: serverMessage.id, status: 'sent' });
-  messageStore.removeOptimisticMessage(tempId);
-} catch (error) {
-  await database.updateMessage(tempId, { status: 'failed' });
-}
+// In components/hooks
+import { firestoreService } from '@/services/firebase-firestore';
 ```
 
 **Benefits**:
-- ✅ Instant user feedback
-- ✅ App feels fast
-- ✅ Works offline
+- Testable in isolation
+- Reusable across components
+- Easy to swap implementations
+- Type-safe with TypeScript
 
-**Challenges**:
-- ❌ Must handle sync conflicts
-- ❌ Need retry logic
-- ❌ Complexity in error states
+### 2. Custom Hooks Pattern
+**Purpose**: Encapsulate complex logic and state
 
----
-
-### 3. Local-First Data Access
-
-**Pattern**: Always read from local cache first, sync in background
-
-**Flow**:
-```
-Read Request → SQLite (instant) → Firestore (background) → Merge & Update
-```
-
-**Implementation**:
 ```typescript
-// Hook pattern for data access
-function useConversationMessages(conversationId: string) {
-  const [messages, setMessages] = useState<Message[]>([]);
+// hooks/useConversations.ts
+export function useConversations() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: fetchConversations
+  });
   
-  useEffect(() => {
-    // 1. Load from SQLite immediately
-    database.getMessages(conversationId).then(setMessages);
-    
-    // 2. Subscribe to Firestore updates
-    const unsubscribe = firestore
-      .collection('conversations').doc(conversationId)
-      .collection('messages')
-      .orderBy('timestamp', 'desc')
-      .limit(50)
-      .onSnapshot(snapshot => {
-        // 3. Merge with local data
-        snapshot.docChanges().forEach(change => {
-          if (change.type === 'added') {
-            database.insertMessage(change.doc.data());
-          }
-        });
-        
-        // 4. Re-query local database
-        database.getMessages(conversationId).then(setMessages);
-      });
-    
-    return unsubscribe;
-  }, [conversationId]);
-  
-  return messages;
+  return { conversations: data, isLoading, error };
 }
+
+// In components
+const { conversations, isLoading } = useConversations();
 ```
 
-**Benefits**:
-- ✅ Instant app startup
-- ✅ Works offline
-- ✅ Smooth UX
+**When to Use**:
+- Business logic that multiple components share
+- Complex state + side effects
+- Firebase listener management
+- Data fetching and caching
 
----
+### 3. Optimistic UI Pattern
+**Purpose**: Instant user feedback before server confirmation
 
-### 4. Service Layer Pattern
-
-**Pattern**: Encapsulate all external dependencies behind service interfaces
-
-**Structure**:
-```
-src/services/
-├── firebase-auth.ts         # Authentication operations
-├── firebase-firestore.ts    # Firestore CRUD
-├── firebase-rtdb.ts         # Realtime Database operations
-├── firebase-storage.ts      # File upload/download
-└── database.ts              # SQLite operations
-```
-
-**Example**:
 ```typescript
-// Service interface
-export const FirestoreService = {
-  async sendMessage(conversationId: string, message: Message) {
-    // Centralized error handling
-    try {
-      return await firestore
-        .collection('conversations').doc(conversationId)
-        .collection('messages').add(message);
-    } catch (error) {
-      logger.error('Failed to send message', error);
-      throw new MessageSendError(error);
-    }
-  }
-};
-
-// Usage in components
-import { FirestoreService } from '@/services/firebase-firestore';
-await FirestoreService.sendMessage(conversationId, message);
+// Implementation flow:
+1. User sends message → insert into SQLite with localId
+2. UI renders immediately (optimistic state)
+3. Write to Firebase in background
+4. On success: update SQLite with serverId
+5. On failure: mark as failed, show retry
 ```
 
-**Benefits**:
-- ✅ Testability (mock services)
-- ✅ Centralized error handling
-- ✅ Easy to swap implementations
-- ✅ Type safety
+**Key Components**:
+- SQLite for instant persistence
+- Zustand for optimistic state
+- React Query for server sync
+- Status tracking: sending → sent → delivered → read
 
----
+### 4. Dual Database Strategy
+**Purpose**: Optimize for different data patterns
 
-### 5. State Management Pattern
+**Firestore** (Persistent, Queryable):
+- Messages with history
+- User profiles
+- Conversation metadata
+- Read receipts
 
-**Pattern**: Use appropriate state management for different data types
+**RTDB** (Fast, Ephemeral):
+- Typing indicators
+- Online/offline presence
+- Connection state
 
-**Strategy**:
-```
-Server State (messages, users) → React Query
-Client State (UI, optimistic) → Zustand
-Form State (inputs) → Local useState
-```
+**SQLite** (Local, Offline-First):
+- Full message cache
+- User profiles cache
+- Conversation list cache
+- Pending outbound messages
 
-**Implementation**:
+### 5. React Query + Zustand Hybrid
+**Purpose**: Separate server state from client state
+
+**React Query** (Server State):
 ```typescript
-// React Query for server-synced state
+// Automatic caching, refetching, invalidation
 const { data: messages } = useQuery({
   queryKey: ['messages', conversationId],
-  queryFn: () => FirestoreService.getMessages(conversationId),
-  staleTime: 30000,
+  queryFn: () => fetchMessages(conversationId)
+});
+```
+
+**Zustand** (Client State):
+```typescript
+// Optimistic messages, UI state
+const { optimisticMessages, addOptimisticMessage } = useMessageStore();
+```
+
+### 6. Cloud Functions Modular Pattern
+**Purpose**: Separate concerns, enable independent deployment
+
+```
+functions/src/
+├── index.ts               # Main exports
+├── notifications/         # Push notification logic
+│   └── sendMessageNotification.ts
+├── embeddings/           # RAG pipeline
+│   └── generateMessageEmbedding.ts
+├── features/             # AI features
+│   └── calendar-extraction.ts
+└── enhanced-ai-processor.ts  # AI command processor
+```
+
+Each module:
+- Independent and testable
+- Can be deployed separately
+- Shares helpers/utilities
+- Type-safe with TypeScript
+
+## Component Patterns
+
+### 1. Container/Presenter Pattern
+**Purpose**: Separate logic from presentation
+
+```typescript
+// Container (logic)
+function ConversationScreen({ id }: Props) {
+  const { messages } = useMessages(id);
+  const { sendMessage } = useSendMessage(id);
+  
+  return <MessageList messages={messages} onSend={sendMessage} />;
+}
+
+// Presenter (UI)
+function MessageList({ messages, onSend }: Props) {
+  return (
+    <FlatList
+      data={messages}
+      renderItem={({ item }) => <MessageBubble message={item} />}
+    />
+  );
+}
+```
+
+### 2. Error Boundary Pattern
+**Purpose**: Catch unhandled errors gracefully
+
+```typescript
+// components/ErrorBoundary.tsx
+export class ErrorBoundary extends React.Component {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log to crash reporting
+    console.error('Error caught:', error);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <ErrorScreen />;
+    }
+    return this.props.children;
+  }
+}
+
+// Usage: Wrap entire app in root layout
+<ErrorBoundary>
+  <App />
+</ErrorBoundary>
+```
+
+### 3. Network State Pattern
+**Purpose**: Handle offline/online scenarios
+
+```typescript
+// hooks/useNetworkStatus.ts
+export function useNetworkStatus() {
+  const [isOnline, setIsOnline] = useState(true);
+  
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected);
+    });
+    return unsubscribe;
+  }, []);
+  
+  return { isOnline };
+}
+
+// Usage: Show banner when offline
+const { isOnline } = useNetworkStatus();
+{!isOnline && <OfflineBanner />}
+```
+
+## Data Flow Patterns
+
+### Message Send Flow
+```
+User Action → Component → Hook → Service → Firebase
+                     ↓
+                 SQLite (optimistic)
+                     ↓
+                 Zustand Store
+                     ↓
+                   UI Update
+```
+
+### Message Receive Flow
+```
+Firebase → Cloud Function → Push Notification
+                          ↓
+                    Firestore Update
+                          ↓
+                    React Query Listener
+                          ↓
+                    SQLite Update
+                          ↓
+                    UI Re-render
+```
+
+### Real-Time Presence Flow
+```
+App State Change → RTDB Write → Other Devices Listen
+                                    ↓
+                              UI Updates
+```
+
+## Firebase Integration Patterns
+
+### 1. Firestore Listener Pattern
+```typescript
+useEffect(() => {
+  const unsubscribe = onSnapshot(
+    query(collection(db, 'conversations')),
+    (snapshot) => {
+      const conversations = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setConversations(conversations);
+    }
+  );
+  
+  return () => unsubscribe();
+}, []);
+```
+
+### 2. RTDB Presence Pattern
+```typescript
+// Initialize presence on app launch
+ref(db, `presence/${userId}`).set({
+  online: true,
+  lastSeen: timestamp
 });
 
-// Zustand for client state
+// Auto-disconnect when app closes
+ref(db, `presence/${userId}`).onDisconnect().set({
+  online: false,
+  lastSeen: timestamp
+});
+```
+
+### 3. Cloud Function Trigger Pattern
+```typescript
+// Trigger on message creation
+export const sendMessageNotification = functions.firestore
+  .document('conversations/{conversationId}/messages/{messageId}')
+  .onCreate(async (snap, context) => {
+    const message = snap.data();
+    // Send push notification to participants
+  });
+```
+
+## State Management Patterns
+
+### 1. Server State (React Query)
+```typescript
+// Automatic caching and refetching
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 3,
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  },
+});
+```
+
+### 2. Client State (Zustand)
+```typescript
+// Minimal boilerplate, TypeScript-first
 interface MessageStore {
   optimisticMessages: Message[];
   addOptimisticMessage: (message: Message) => void;
 }
 
-const useMessageStore = create<MessageStore>((set) => ({
+export const useMessageStore = create<MessageStore>((set) => ({
   optimisticMessages: [],
-  addOptimisticMessage: (message) => 
-    set((state) => ({ 
-      optimisticMessages: [...state.optimisticMessages, message] 
-    })),
+  addOptimisticMessage: (message) =>
+    set((state) => ({
+      optimisticMessages: [...state.optimisticMessages, message]
+    }))
 }));
 ```
 
-**Rationale**:
-- React Query handles caching, refetching, deduplication
-- Zustand for simple client state without React Query overhead
-- Local state for ephemeral UI state
-
----
-
-### 6. Presence Management Pattern
-
-**Pattern**: Automatic online/offline tracking with connection state management
-
-**Implementation**:
+### 3. Local State (React useState)
 ```typescript
-// On app foreground
-await realtimeDb.ref(`presence/${userId}`).set({
-  online: true,
-  lastSeen: serverTimestamp()
-});
-
-// On app background/disconnect (automatic)
-await realtimeDb.ref(`presence/${userId}`).onDisconnect().set({
-  online: false,
-  lastSeen: serverTimestamp()
-});
-
-// Monitor connection state
-realtimeDb.ref('.info/connected').on('value', (snapshot) => {
-  if (snapshot.val() === true) {
-    // Connected - set presence
-  } else {
-    // Disconnected - onDisconnect handles cleanup
-  }
-});
+// Component-specific transient state
+const [inputValue, setInputValue] = useState('');
+const [isTyping, setIsTyping] = useState(false);
 ```
-
-**Key Features**:
-- Automatic cleanup on disconnect (Firebase SDK handles this)
-- Multiple device support via connection IDs
-- Sub-50ms updates via RTDB
-
----
-
-### 7. Push Notification Pattern
-
-**Pattern**: Server-side notification triggers with client-side handling
-
-**Flow**:
-```
-Message Created → Cloud Function → Expo Push API → APNs → Device
-```
-
-**Implementation**:
-```typescript
-// Cloud Function (server-side)
-export const sendMessageNotification = functions.firestore
-  .document('conversations/{conversationId}/messages/{messageId}')
-  .onCreate(async (snap) => {
-    const message = snap.data();
-    
-    // Get recipient push tokens
-    const recipients = await getRecipients(conversationId, message.senderId);
-    
-    // Send via Expo Push API
-    await expo.sendPushNotificationsAsync(
-      recipients.map(token => ({
-        to: token,
-        title: message.senderName,
-        body: message.text,
-        data: { conversationId }
-      }))
-    );
-  });
-
-// Client-side (mobile app)
-Notifications.addNotificationReceivedListener(notification => {
-  // Handle foreground notification
-  showInAppAlert(notification);
-});
-
-Notifications.addNotificationResponseReceivedListener(response => {
-  // User tapped notification - navigate to conversation
-  router.push(`/conversation/${response.notification.data.conversationId}`);
-});
-```
-
----
-
-### 8. Error Handling Pattern
-
-**Pattern**: Layered error handling with user-friendly messages
-
-**Layers**:
-1. **Service Layer**: Catch and classify errors
-2. **Component Layer**: Display appropriate UI
-3. **Global Boundary**: Catch unexpected errors
-
-**Implementation**:
-```typescript
-// Custom error types
-class MessageSendError extends Error {
-  constructor(message: string, public code: string) {
-    super(message);
-  }
-}
-
-// Service layer
-async function sendMessage(data: Message) {
-  try {
-    return await firestore.addMessage(data);
-  } catch (error) {
-    if (error.code === 'permission-denied') {
-      throw new MessageSendError('You cannot send messages to this conversation', 'PERMISSION_DENIED');
-    }
-    throw new MessageSendError('Failed to send message. Please try again.', 'UNKNOWN');
-  }
-}
-
-// Component layer
-try {
-  await sendMessage(message);
-} catch (error) {
-  if (error instanceof MessageSendError) {
-    showErrorToast(error.message);
-  } else {
-    showErrorToast('Something went wrong. Please try again.');
-  }
-}
-```
-
----
-
-## Component Patterns
-
-### Message Bubble Component
-
-**Responsibility**: Display single message with proper styling
-
-**Props**:
-```typescript
-interface MessageBubbleProps {
-  message: Message;
-  isOwnMessage: boolean;
-  showSender: boolean;      // For group chats
-  onLongPress?: () => void;
-}
-```
-
-**Styling Pattern**:
-```typescript
-// Different styles based on sender
-const bubbleStyle = isOwnMessage 
-  ? styles.ownMessageBubble    // Right-aligned, blue
-  : styles.otherMessageBubble; // Left-aligned, gray
-```
-
-### Message List Component
-
-**Responsibility**: Virtualized list of messages with optimizations
-
-**Key Features**:
-- Inverted FlatList (scrolls from bottom)
-- Windowing (only render visible items)
-- Date dividers
-- Message grouping
-
-**Implementation**:
-```typescript
-<FlatList
-  data={messages}
-  inverted              // Newest at bottom
-  keyExtractor={item => item.id || item.localId}
-  renderItem={({ item }) => <MessageBubble message={item} />}
-  getItemLayout={getItemLayout}  // Optimization
-  removeClippedSubviews         // Memory optimization
-/>
-```
-
----
-
-## Data Flow Patterns
-
-### Message Send Flow
-
-```
-User Types → Input Component
-                    ↓
-            User Presses Send
-                    ↓
-         Generate Local Message
-                    ↓
-    ┌───────────────┴───────────────┐
-    ↓                               ↓
-SQLite Insert              Zustand Update
-(status: sending)          (optimistic)
-    ↓                               ↓
-    └───────────────┬───────────────┘
-                    ↓
-            UI Updates Instantly
-                    ↓
-        Firebase Write (background)
-                    ↓
-    ┌───────────────┴───────────────┐
-    ↓ Success                    ↓ Failure
-Update SQLite              Update SQLite
-(with server ID)          (status: failed)
-    ↓                               ↓
-Remove optimistic          Show retry button
-```
-
-### Message Receive Flow
-
-```
-Firestore Listener Fires
-         ↓
-    New Message Doc
-         ↓
-Check if Already in SQLite
-         ↓
-    ┌────┴────┐
-    ↓ No      ↓ Yes
-Insert      Skip
-    ↓
-React Query Invalidates
-    ↓
-UI Re-renders
-    ↓
-If Conversation Open → Auto-scroll
-If App Foreground → Update badge
-```
-
----
 
 ## Security Patterns
 
-### Firestore Security Rules
-
+### 1. Firebase Security Rules
 ```javascript
-// Rule pattern: Only conversation participants can access
+// Firestore rules: Check user authentication and ownership
 match /conversations/{conversationId} {
-  allow read: if request.auth.uid in resource.data.participants;
-  allow write: if request.auth.uid in resource.data.participants;
-  
-  match /messages/{messageId} {
-    // Inherit parent rules + verify sender
-    allow create: if request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-                     && request.resource.data.senderId == request.auth.uid;
-  }
+  allow read: if request.auth != null && 
+                 request.auth.uid in resource.data.participants;
+  allow create: if request.auth != null;
 }
 ```
 
----
-
-## Performance Patterns
-
-### Message List Optimization
-
+### 2. Environment Variables
 ```typescript
-// 1. Memoize expensive components
-const MessageBubble = React.memo(({ message }) => {
-  // Only re-render if message changes
-}, (prev, next) => prev.message.id === next.message.id);
-
-// 2. Use getItemLayout for FlatList
-const getItemLayout = (data, index) => ({
-  length: ITEM_HEIGHT,
-  offset: ITEM_HEIGHT * index,
-  index,
-});
-
-// 3. Limit initial query
-const messages = await firestore
-  .collection('messages')
-  .limit(50)           // Only fetch recent messages
-  .orderBy('timestamp', 'desc')
-  .get();
+// Never commit secrets
+const apiKey = process.env.OPENAI_API_KEY; // In Cloud Functions
 ```
 
----
+### 3. Type-Safe API Calls
+```typescript
+// Validate responses with TypeScript
+interface MessageResponse {
+  id: string;
+  content: MessageContent;
+  timestamp: Date;
+}
+
+const response = await fetch(...);
+const message: MessageResponse = await response.json();
+```
 
 ## Testing Patterns
 
-### Service Layer Testing
-
+### 1. Unit Tests (Services)
 ```typescript
-// Mock Firebase for unit tests
-jest.mock('./firebase-config', () => ({
-  firestore: {
-    collection: jest.fn(() => ({
-      add: jest.fn(() => Promise.resolve({ id: 'mock-id' }))
-    }))
-  }
-}));
-
-// Test service function
-test('sendMessage creates message in Firestore', async () => {
-  const message = { text: 'Hello', senderId: 'user1' };
-  const result = await FirestoreService.sendMessage('conv1', message);
-  expect(result.id).toBe('mock-id');
+describe('firestoreService', () => {
+  it('should create a user', async () => {
+    const userData = { displayName: 'John' };
+    await firestoreService.createUser('userId', userData);
+    // Assert user created
+  });
 });
 ```
 
+### 2. Integration Tests (Hooks)
+```typescript
+describe('useMessages', () => {
+  it('should fetch messages', async () => {
+    const { result } = renderHook(() => useMessages('convId'));
+    await waitFor(() => expect(result.current.messages).toBeDefined());
+  });
+});
+```
+
+### 3. E2E Tests (Critical Flows)
+```typescript
+describe('Message Send Flow', () => {
+  it('should send message and appear in chat', async () => {
+    // Test complete user journey
+  });
+});
+```
+
+## Performance Patterns
+
+### 1. Pagination Pattern
+```typescript
+// Load messages in chunks
+const fetchMessages = async (
+  conversationId: string,
+  lastMessageId?: string
+) => {
+  let query = collection(db, `conversations/${conversationId}/messages`);
+  query = query(orderBy('timestamp', 'desc')).limit(50);
+  
+  if (lastMessageId) {
+    query = query(startAfter(lastMessageId));
+  }
+  
+  return getDocs(query);
+};
+```
+
+### 2. Memoization Pattern
+```typescript
+// Cache expensive computations
+const sortedMessages = useMemo(
+  () => messages.sort((a, b) => b.timestamp - a.timestamp),
+  [messages]
+);
+```
+
+### 3. Image Optimization Pattern
+```typescript
+// Compress before upload
+const compressedImage = await ImageManipulator.manipulateAsync(
+  imageUri,
+  [{ resize: { width: 800 } }],
+  { compress: 0.8 }
+);
+```
+
+## Error Handling Patterns
+
+### 1. Try-Catch with User Feedback
+```typescript
+const sendMessage = async (message: string) => {
+  try {
+    await firestoreService.sendMessage(conversationId, message);
+  } catch (error) {
+    showErrorToast('Failed to send message. Please try again.');
+  }
+};
+```
+
+### 2. Retry Pattern
+```typescript
+const retryOperation = async (operation: () => Promise<void>) => {
+  for (let i = 0; i < 3; i++) {
+    try {
+      await operation();
+      return;
+    } catch (error) {
+      if (i === 2) throw error;
+      await delay(1000 * (i + 1));
+    }
+  }
+};
+```
+
+### 3. Offline Queue Pattern
+```typescript
+// Queue messages when offline
+const queueMessage = async (message: Message) => {
+  await sqlite.insertMessage({ ...message, syncStatus: 'pending' });
+};
+
+// Retry on reconnect
+NetInfo.addEventListener(state => {
+  if (state.isConnected) {
+    retryPendingMessages();
+  }
+});
+```
+
+## Key Files and Their Roles
+
+### Mobile App
+- `app/_layout.tsx`: Root layout, auth initialization
+- `app/(tabs)/chats.tsx`: Conversation list screen
+- `app/conversation/[id].tsx`: Individual conversation screen
+- `src/components/MessageList.tsx`: Message rendering
+- `src/hooks/useMessages.ts`: Message fetching logic
+- `src/services/firebase-firestore.ts`: Firestore operations
+- `src/services/firebase-rtdb.ts`: Presence and typing
+- `src/services/database/`: SQLite operations
+
+### Cloud Functions
+- `functions/src/index.ts`: Main entry, exports all functions
+- `functions/src/notifications/sendMessageNotification.ts`: Push notifications
+- `functions/src/embeddings/generateMessageEmbedding.ts`: RAG pipeline
+- `functions/src/enhanced-ai-processor.ts`: AI command processor
+- `functions/src/features/calendar-extraction.ts`: AI features
+
+## Critical Decisions
+
+1. **Dual Database**: Firestore + RTDB for different use cases
+2. **SQLite Caching**: Offline-first, instant loads
+3. **Optimistic UI**: Zustand for client state, React Query for server
+4. **TypeScript Strict**: Catch errors early, no `any` types
+5. **Service Layer**: Business logic separated from UI
+6. **Modular Functions**: Cloud Functions split by concern
+
 ---
 
-## Key Trade-offs Made
-
-| Decision | Pro | Con | Rationale |
-|----------|-----|-----|-----------|
-| Dual Database | Optimal for use case | More complexity | Different data needs different tools |
-| Optimistic UI | Feels fast | Harder to implement | UX worth the complexity |
-| Expo Push | Simple setup | Extra hop | Simplicity wins for MVP |
-| 20-user limit | Manageable fanout | Can't scale to 100s | Prove concept first |
-| TypeScript strict | Type safety | Slower initial dev | Fewer bugs long-term |
-
----
-
-These patterns form the foundation of the system. When implementing new features, follow these established patterns for consistency and maintainability.
+**Last Updated**: Initial Creation - October 2025  
+**Version**: 1.0  
+**Status**: Active Development

@@ -1,354 +1,238 @@
-# Technology Context
+# Technical Context
 
-**Last Updated:** October 20, 2025
-
----
-
-## Technology Stack
+## Tech Stack
 
 ### Mobile Frontend
-
-| Technology | Version | Purpose | Documentation |
-|------------|---------|---------|---------------|
-| React Native | Latest | Mobile app framework | [docs](https://reactnative.dev) |
-| Expo | SDK 51+ | Development platform | [docs](https://docs.expo.dev) |
-| TypeScript | 5.x | Type-safe JavaScript | [docs](https://typescriptlang.org) |
-| Expo Router | Latest | File-based navigation | [docs](https://docs.expo.dev/router) |
-| React Query | 5.x | Server state management | [docs](https://tanstack.com/query) |
-| Zustand | 4.x | Client state management | [docs](https://docs.pmnd.rs/zustand) |
-| Expo SQLite | Latest | Local database | [docs](https://docs.expo.dev/versions/latest/sdk/sqlite) |
-| Firebase SDK | 10.x | Backend integration | [docs](https://firebase.google.com/docs/web/setup) |
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| React Native | 0.81.5 | Cross-platform mobile framework |
+| Expo | 54.0.20 | Development platform and tools |
+| TypeScript | ~5.9.2 | Type-safe development |
+| Expo Router | ~6.0.13 | File-based navigation |
+| React Query | ^5.90.5 | Server state synchronization |
+| Zustand | ^5.0.8 | Client state management |
+| Firebase SDK | ^12.4.0 | Backend integration |
+| Expo SQLite | ~16.0.8 | Local database |
+| Expo Notifications | ~0.32.12 | Push notifications |
+| Expo Image Picker | ~17.0.8 | Media selection |
 
 ### Backend Services
+| Service | Provider | Purpose |
+|---------|----------|---------|
+| Firebase Firestore | Google | Persistent data (messages, users, conversations) |
+| Firebase RTDB | Google | Ephemeral data (presence, typing indicators) |
+| Firebase Cloud Functions | Google | Serverless backend logic (TypeScript, Node 20) |
+| Firebase Auth | Google | User authentication (email/password) |
+| Firebase Storage | Google | Media file storage (images) |
+| Expo Push Service | Expo | Push notification delivery |
 
-| Service | Purpose | Pricing | Documentation |
-|---------|---------|---------|---------------|
-| Firebase Firestore | Persistent data storage | Free tier: 50k reads, 20k writes/day | [docs](https://firebase.google.com/docs/firestore) |
-| Firebase Realtime Database | Ephemeral data (presence, typing) | Free tier: 1GB storage, 10GB/month transfer | [docs](https://firebase.google.com/docs/database) |
-| Firebase Cloud Functions | Serverless backend logic | Free tier: 125k invocations/month | [docs](https://firebase.google.com/docs/functions) |
-| Firebase Authentication | User authentication | Free tier: unlimited | [docs](https://firebase.google.com/docs/auth) |
-| Firebase Storage | Media file storage | Free tier: 5GB storage | [docs](https://firebase.google.com/docs/storage) |
-| Expo Push Service | Push notifications | Free | [docs](https://docs.expo.dev/push-notifications) |
+### AI/ML Services
+| Service | Provider | Purpose | Status |
+|---------|----------|---------|--------|
+| OpenAI API | OpenAI | Text embeddings, AI features | ✅ Installed |
+| Anthropic Claude | Anthropic | LLM for AI commands | ✅ Installed |
+| Pinecone | Pinecone | Vector database for RAG | ✅ Installed |
+| LangChain | LangSmith | AI orchestration framework | ✅ Installed |
 
 ### Development Tools
+- **IDE**: Cursor (primary), VS Code compatible
+- **Testing**: Jest + React Native Testing Library
+- **Build Tool**: EAS Build (Expo Application Services)
+- **Git**: Version control, commits follow pattern `[PHASE-TASK] description`
+- **Firebase CLI**: Backend deployment and management
 
-| Tool | Purpose | Installation |
-|------|---------|--------------|
-| Expo CLI | Expo project management | `npm install -g expo-cli` |
-| EAS CLI | Build and deployment | `npm install -g eas-cli` |
-| Firebase CLI | Firebase management | `npm install -g firebase-tools` |
-| Xcode | iOS development | Mac App Store |
-| React Native Debugger | Debugging tool | [Download](https://github.com/jhen0409/react-native-debugger) |
+## Project Structure
 
----
-
-## Development Setup
-
-### Prerequisites
-
-```bash
-# Check versions
-node --version    # Should be 20+
-npm --version     # Should be 10+
-expo --version    # Should be latest
-eas --version     # Should be latest
-firebase --version # Should be latest
-
-# Verify Xcode
-xcodebuild -version  # Should be 15+
-```
-
-### Environment Variables
-
-**Required for Mobile App** (`mobile/.env`):
-```bash
-EXPO_PUBLIC_FIREBASE_API_KEY=your-api-key
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-EXPO_PUBLIC_FIREBASE_APP_ID=your-app-id
-```
-
-**Required for Cloud Functions** (`functions/.env`):
-```bash
-ANTHROPIC_API_KEY=your-api-key    # For future AI features
-OPENAI_API_KEY=your-api-key        # For future AI features
-```
-
-### Project Structure
-
+### Root Directory
 ```
 whatsapp-clone/
-├── mobile/                        # React Native + Expo app
-│   ├── app/                       # Expo Router pages
-│   │   ├── (auth)/               # Auth screens (login, register)
-│   │   ├── (tabs)/               # Main tabs (chats, profile)
-│   │   ├── conversation/[id].tsx # Dynamic conversation route
-│   │   └── _layout.tsx           # Root layout with providers
-│   │
-│   ├── src/
-│   │   ├── components/           # Reusable UI components
-│   │   │   ├── MessageBubble.tsx
-│   │   │   ├── MessageList.tsx
-│   │   │   └── MessageInput.tsx
-│   │   ├── hooks/                # Custom React hooks
-│   │   │   ├── usePresence.ts
-│   │   │   ├── useTypingIndicators.ts
-│   │   │   └── useConversations.ts
-│   │   ├── services/             # External service wrappers
-│   │   │   ├── firebase-auth.ts
-│   │   │   ├── firebase-firestore.ts
-│   │   │   ├── firebase-rtdb.ts
-│   │   │   ├── firebase-storage.ts
-│   │   │   └── database.ts       # SQLite operations
-│   │   ├── store/                # Zustand stores
-│   │   │   ├── auth-store.ts
-│   │   │   └── message-store.ts
-│   │   ├── types/                # TypeScript interfaces
-│   │   │   └── index.ts
-│   │   ├── utils/                # Helper functions
-│   │   │   ├── error-handler.ts
-│   │   │   ├── validators.ts
-│   │   │   └── date-formatter.ts
-│   │   └── constants/            # App constants
-│   │       └── index.ts
-│   │
-│   ├── assets/                   # Images, fonts
-│   ├── firebase.config.ts        # Firebase initialization
-│   ├── app.json                  # Expo configuration
-│   ├── eas.json                  # EAS Build configuration
-│   └── package.json
-│
-├── functions/                    # Firebase Cloud Functions
-│   ├── src/
-│   │   ├── sendMessageNotification.ts
-│   │   ├── updatePresence.ts
-│   │   ├── handleGroupMessage.ts
-│   │   └── processAIAction.ts   # Future: AI processing
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── _docs/                        # Comprehensive documentation
-├── memory-bank/                  # AI context files
-├── context-summaries/            # Development session logs
-├── .cursor/rules/                # Cursor IDE rules
-├── firebase.json                 # Firebase configuration
-├── firestore.rules              # Firestore security
-├── database.rules.json          # RTDB security
-└── storage.rules                # Storage security
+├── mobile/              # React Native app
+├── functions/           # Cloud Functions (TypeScript)
+├── _docs/              # Documentation
+├── firebase.json       # Firebase configuration
+├── firestore.rules     # Security rules
+├── database.rules.json # RTDB security rules
+└── storage.rules       # Storage security rules
 ```
 
----
-
-## Key Dependencies
-
-### Mobile App (`mobile/package.json`)
-
-**Core Framework**:
-```json
-{
-  "expo": "~51.0.0",
-  "react-native": "0.74.0",
-  "react": "18.2.0",
-  "typescript": "~5.3.0"
-}
+### Mobile App Structure
+```
+mobile/
+├── app/                # Expo Router pages
+│   ├── (auth)/        # Authentication screens
+│   ├── (tabs)/        # Main tabs (chats, profile)
+│   └── conversation/  # Conversation screens
+├── src/
+│   ├── components/    # Reusable UI components
+│   ├── hooks/         # Custom React hooks
+│   ├── services/      # Firebase, SQLite, API services
+│   ├── store/         # Zustand stores
+│   ├── types/         # TypeScript types
+│   └── utils/         # Helper functions
+└── assets/            # Images, fonts
 ```
 
-**Navigation & Routing**:
-```json
-{
-  "expo-router": "~3.5.0",
-  "react-native-safe-area-context": "4.10.0",
-  "react-native-screens": "~3.31.0"
-}
+### Cloud Functions Structure
+```
+functions/
+├── src/
+│   ├── index.ts                      # Main entry point
+│   ├── notifications/               # Push notification logic
+│   ├── embeddings/                  # RAG pipeline
+│   ├── features/                     # AI features (calendar extraction)
+│   ├── helpers/                      # Shared utilities
+│   ├── enhanced-ai-processor.ts     # AI command processor
+│   ├── services/                     # AI service integrations
+│   └── tools/                        # AI tools definitions
+├── lib/                              # Compiled JavaScript
+└── tests/                            # Test files
 ```
 
-**State Management**:
-```json
-{
-  "@tanstack/react-query": "^5.0.0",
-  "zustand": "^4.5.0"
-}
+## Development Environment
+
+### Prerequisites
+- **macOS**: Required for iOS development
+- **Xcode**: Latest version from App Store
+- **Node.js**: Version 20+ (check with `node --version`)
+- **npm/yarn**: Package manager
+- **Git**: Version control
+- **Firebase CLI**: `npm install -g firebase-tools`
+- **Expo CLI**: `npm install -g expo-cli eas-cli`
+
+### Setup Commands
+```bash
+# Install dependencies
+cd mobile && npm install
+cd functions && npm install
+
+# Start development server
+cd mobile && npm start
+
+# Run on iOS simulator
+npm run ios
+
+# Deploy Cloud Functions
+cd functions && npm run deploy
 ```
 
-**Firebase**:
-```json
-{
-  "firebase": "^10.12.0"
-}
+## Configuration Files
+
+### Mobile App
+- `mobile/app.json`: Expo configuration (name, slug, version)
+- `mobile/firebase.config.ts`: Firebase initialization
+- `mobile/package.json`: Dependencies and scripts
+- `mobile/babel.config.js`: Babel configuration
+- `mobile/tsconfig.json`: TypeScript configuration
+
+### Cloud Functions
+- `functions/package.json`: Dependencies and scripts
+- `functions/tsconfig.json`: TypeScript configuration
+- `functions/src/index.ts`: Function exports
+- `.env` (not committed): API keys for AI services
+
+### Firebase
+- `firebase.json`: Firebase project configuration
+- `firestore.rules`: Security rules for Firestore
+- `database.rules.json`: Security rules for RTDB
+- `storage.rules`: Security rules for Storage
+- `firestore.indexes.json`: Firestore indexes
+
+## API Keys and Secrets
+
+### Firebase Configuration
+**Location**: `mobile/firebase.config.ts`
+
+```typescript
+const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+};
 ```
 
-**Local Storage**:
-```json
-{
-  "expo-sqlite": "~14.0.0"
-}
+### Cloud Functions Secrets
+**Location**: Firebase Console → Functions → Secrets
+
+Secrets managed via Firebase:
+- `OPENAI_API_KEY`: OpenAI API key for embeddings
+- `LANGSMITH_API_KEY`: LangSmith monitoring
+- `PINECONE_API_KEY`: Pinecone vector database
+
+Access in functions:
+```typescript
+import * as functions from 'firebase-functions';
+const openaiKey = functions.config().openai.api_key;
 ```
 
-**Push Notifications**:
-```json
-{
-  "expo-notifications": "~0.28.0",
-  "expo-device": "~6.0.0"
-}
-```
-
-**Media Handling**:
-```json
-{
-  "expo-image-picker": "~15.0.0",
-  "expo-image": "~1.12.0"
-}
-```
-
-### Cloud Functions (`functions/package.json`)
-
-```json
-{
-  "firebase-functions": "^5.0.0",
-  "firebase-admin": "^12.0.0",
-  "expo-server-sdk": "^3.10.0",
-  "@anthropic-ai/sdk": "^0.20.0",
-  "typescript": "^5.3.0"
-}
-```
-
----
-
-## Firebase Configuration
+## Database Schemas
 
 ### Firestore Collections
-
 ```
 /users/{userId}
-  - id: string
-  - email: string
-  - displayName: string
-  - photoURL?: string
-  - pushToken?: string
-  - createdAt: Timestamp
-  - lastActive: Timestamp
+  - email, displayName, photoURL, pushToken, createdAt
 
 /conversations/{conversationId}
-  - id: string
-  - type: 'direct' | 'group'
-  - participants: string[]
-  - name?: string (for groups)
-  - lastMessageAt: Timestamp
-  - unreadCount: { [userId]: number }
+  - type, participants, participantDetails, name, lastMessageAt
 
 /conversations/{conversationId}/messages/{messageId}
-  - id: string
-  - senderId: string
-  - content: { text: string, type: 'text' | 'image', mediaUrl?: string }
-  - timestamp: Timestamp
-  - status: 'sending' | 'sent' | 'delivered' | 'read'
-  - readBy: { [userId]: Timestamp }
+  - senderId, content, timestamp, status, deliveredTo, readBy
 ```
 
-### Realtime Database Structure
-
+### RTDB Paths
 ```
 /presence/{userId}
-  - online: boolean
-  - lastSeen: number (timestamp)
-  - connections: { [connectionId]: true }
+  - online, lastSeen
 
 /typing/{conversationId}/{userId}
-  - isTyping: boolean
-  - timestamp: number
+  - isTyping, timestamp
 ```
 
-### Storage Structure
+### SQLite Tables
+```sql
+CREATE TABLE messages (
+  id, localId, conversationId, senderId, contentText,
+  contentType, mediaUrl, timestamp, status, syncStatus
+);
 
-```
-/profile-images/{userId}/{imageId}.jpg
-/message-media/{conversationId}/{mediaId}.jpg
-```
+CREATE TABLE conversations (
+  id, type, participants, name, lastMessageText, lastMessageAt
+);
 
----
-
-## TypeScript Configuration
-
-**Strict Mode Enabled** (`tsconfig.json`):
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true
-  }
-}
+CREATE TABLE users (
+  id, displayName, email, photoURL
+);
 ```
 
-**Key Rules**:
-- No `any` types (use `unknown` or proper types)
-- All function parameters and returns typed
-- Interfaces for all data structures
-- Type guards for runtime checks
-
----
-
-## Build & Deployment
+## Build and Deployment
 
 ### Development Build
-
 ```bash
-# Run in Expo Go
-cd mobile
-npx expo start
+# iOS Simulator
+npx expo start --ios
 
-# Scan QR with iPhone Camera app
+# Android Emulator
+npx expo start --android
+
+# Web (for testing UI)
+npx expo start --web
 ```
 
 ### Production Build (EAS)
-
 ```bash
-# Configure EAS
-eas build:configure
-
 # Build for iOS
 eas build --platform ios --profile production
 
 # Submit to TestFlight
 eas submit --platform ios
-```
 
-### EAS Configuration (`eas.json`)
-
-```json
-{
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview": {
-      "distribution": "internal",
-      "ios": { "simulator": false }
-    },
-    "production": {
-      "distribution": "store",
-      "ios": { "simulator": false }
-    }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "ascAppId": "your-app-id",
-        "appleTeamId": "your-team-id"
-      }
-    }
-  }
-}
+# Check build status
+eas build:list
 ```
 
 ### Cloud Functions Deployment
-
 ```bash
 # Deploy all functions
 firebase deploy --only functions
@@ -360,203 +244,208 @@ firebase deploy --only functions:sendMessageNotification
 firebase functions:log
 ```
 
----
+## Testing Setup
+
+### Test Configuration
+- **Framework**: Jest
+- **Test Libraries**: React Native Testing Library
+- **Coverage**: Istanbul/nyc
+- **Setup File**: `mobile/__tests__/setup.ts`
+
+### Running Tests
+```bash
+# All tests
+npm test
+
+# Unit tests only
+npm run test:unit
+
+# Integration tests
+npm run test:integration
+
+# Services tests
+npm run test:services
+
+# Components tests
+npm run test:components
+
+# With coverage
+npm run test:coverage
+```
+
+### Test File Organization
+```
+mobile/__tests__/
+├── setup.ts                    # Test configuration
+├── unit/                       # Unit tests
+│   ├── services/
+│   ├── hooks/
+│   └── utils/
+└── integration/                # Integration tests
+    └── flows/
+```
 
 ## Performance Targets
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| App Launch | <3s | Time to interactive |
-| Message Send | <50ms | UI update time |
-| Message Delivery | <300ms | Sender to recipient |
-| Presence Update | <50ms | Status change sync |
-| Typing Indicator | <300ms | Start to display |
-| Image Upload | <5s | 1MB image |
-| Scrolling FPS | 60 FPS | Message list |
-| Memory Usage | <200MB | Normal operation |
+### Latency
+- **Message Delivery**: <300ms (online)
+- **Presence Updates**: <50ms (RTDB)
+- **Typing Indicators**: <300ms (RTDB)
+- **App Launch**: <3s (SQLite cache)
+- **Time to First Message**: <1s
 
----
+### Throughput
+- **Message Send Rate**: 30 messages/minute max
+- **Media Upload**: 10MB max per image
+- **Group Size**: 20 users max
+- **Queries**: Paginate at 50 messages
 
-## Security Best Practices
+### Resource Usage
+- **Memory**: <200MB typical usage
+- **Storage**: SQLite cache ~10MB per 1000 messages
+- **Battery**: Optimize React Query refetch intervals
+- **Network**: Minimize Firestore reads with caching
 
-### Firebase Security Rules
+## Security Configuration
 
-**Principle**: Deny by default, allow explicitly
+### Authentication
+- **Provider**: Firebase Auth (email/password)
+- **Token Refresh**: Automatic by Firebase SDK
+- **Session Persistence**: Local storage via AsyncStorage
 
-```javascript
-// Firestore
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
-    
-    // Explicit allow for authenticated users
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
+### Data Security
+- **Firestore Rules**: User-based access control
+- **RTDB Rules**: Authenticated users only
+- **Storage Rules**: Private to conversation participants
+- **API Keys**: Secrets managed in Firebase Console
+
+### HTTPS Only
+- All network requests via HTTPS
+- Firebase SDK enforces secure connections
+- No plain HTTP allowed
+
+## Monitoring and Logging
+
+### Logging Strategy
+```typescript
+// Use prefixes for filtering
+console.log('[AUTH] User signed in');
+console.log('[MESSAGE] Message sent');
+console.log('[PRESENCE] User went online');
+```
+
+### Firebase Console
+- Monitor Firestore usage (reads/writes)
+- Track Cloud Functions invocations
+- View error logs and crash reports
+- Monitor storage usage
+
+### Debugging Tools
+- **React Native Debugger**: For React state
+- **Firebase Emulator**: For local testing
+- **React Query DevTools**: For cache inspection
+- **LangSmith**: For AI tool tracking
+
+## TypeScript Configuration
+
+### Strict Mode Settings
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
   }
 }
 ```
 
-### Environment Variables
+### Linting
+- **ESLint**: Configured for TypeScript
+- **Prettier**: Code formatting (optional)
+- **Rules**: Strict mode enforced, no `any` allowed
 
-- **Never commit** `.env` files
-- **Always use** `EXPO_PUBLIC_` prefix for client-side env vars
-- **Store secrets** in Firebase Functions config
-- **Use different keys** for dev/staging/production
+## Environment Variables
 
-### API Keys
-
-- **Firebase keys are safe** to expose (protected by security rules)
-- **AI API keys must** be server-side only
-- **Push tokens** should be validated server-side
-
----
-
-## Testing Setup
-
-### Unit Testing (Future)
-
+### Development
 ```bash
-# Install Jest + React Native Testing Library
-npm install --save-dev jest @testing-library/react-native
+# Mobile (Firebase)
+EXPO_PUBLIC_FIREBASE_API_KEY=...
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=...
 
-# Run tests
-npm test
+# Functions (Local)
+OPENAI_API_KEY=...
+LANGSMITH_API_KEY=...
+PINECONE_API_KEY=...
 ```
 
-### Integration Testing
+### Production
+- Firebase: Config in `firebase.config.ts`
+- Cloud Functions: Secrets in Firebase Console
+- Never commit `.env` files to Git
 
+## Dependency Management
+
+### Mobile Dependencies
 ```bash
-# Firebase Emulator Suite
-firebase emulators:start
+# Add new dependency
+cd mobile && npm install <package>
 
-# Test against local emulators
-export FIRESTORE_EMULATOR_HOST="localhost:8080"
-export FIREBASE_AUTH_EMULATOR_HOST="localhost:9099"
+# Update dependencies
+npm update
+
+# Check for vulnerabilities
+npm audit
 ```
 
-### Device Testing
-
-**Required**:
-- Physical iPhone (push notifications don't work in simulator)
-- TestFlight account
-- Multiple iOS versions (if possible)
-
-**Recommended Test Devices**:
-- iPhone SE (smallest screen)
-- iPhone 14 Pro (standard)
-- iPhone 14 Pro Max (largest screen)
-
----
-
-## Common Commands
-
-### Daily Development
-
+### Cloud Functions Dependencies
 ```bash
-# Start Expo dev server
-cd mobile && npx expo start
+# Add new dependency
+cd functions && npm install <package>
 
-# Clear cache and restart
-npx expo start --clear
-
-# View logs
-npx expo start --ios
-# Then shake device for dev menu
-
-# Type check
-npx tsc --noEmit
+# Build TypeScript
+npm run build
 ```
 
-### Firebase Operations
+## Known Technical Constraints
 
-```bash
-# View Firestore data
-firebase firestore:indexes
-
-# View RTDB data
-firebase database:get /
-
-# View function logs
-firebase functions:log --only sendMessageNotification
-
-# Deploy rules only
-firebase deploy --only firestore:rules,database
-```
-
-### Build & Deploy
-
-```bash
-# Build preview version
-eas build --platform ios --profile preview
-
-# Check build status
-eas build:list
-
-# Submit to TestFlight
-eas submit --platform ios --latest
-```
-
----
+1. **iOS Only (MVP)**: Android support planned post-MVP
+2. **Physical Device Required**: Push notifications don't work in simulator
+3. **Firebase Free Tier**: Monitor usage to avoid costs
+4. **20-User Group Limit**: Hard limit for MVP, can expand
+5. **Offline Queue**: Maximum 100 pending messages
+6. **TypeScript Strict**: No `any` types allowed
 
 ## Troubleshooting
 
 ### Common Issues
+- **Expo Go Connection**: Use QR code or manual connection
+- **Firebase Auth Errors**: Check security rules
+- **Push Notifications**: Requires physical device + APNs setup
+- **Image Upload**: Check file size limits
+- **TypeScript Errors**: Run `npx tsc` to see all errors
 
-**Issue**: "Firebase not initialized"
+### Debug Commands
 ```bash
-# Solution: Check firebase.config.ts has correct values
-# Ensure .env file exists with EXPO_PUBLIC_ prefixed vars
-```
+# Clear Expo cache
+npx expo start --clear
 
-**Issue**: Push notifications not working
-```bash
-# Solution: Must test on physical device
-# Verify APNs key configured in Firebase Console
-# Check push token saved in Firestore
-```
+# Clear React Native cache
+npx react-native start --reset-cache
 
-**Issue**: TypeScript errors with `any`
-```bash
-# Solution: Define proper interfaces in src/types/index.ts
-# Use type guards for runtime checks
-```
+# Rebuild Cloud Functions
+cd functions && npm run build
 
-**Issue**: Slow Firestore queries
-```bash
-# Solution: Add indexes via Firebase Console
-# Use .limit() to reduce data transfer
-# Check for N+1 query patterns
+# View Firebase logs
+firebase functions:log --limit 50
 ```
 
 ---
 
-## Resource Links
-
-### Official Documentation
-- [React Native](https://reactnative.dev/docs/getting-started)
-- [Expo](https://docs.expo.dev/)
-- [Firebase](https://firebase.google.com/docs)
-- [TypeScript](https://www.typescriptlang.org/docs/)
-- [React Query](https://tanstack.com/query/latest/docs/react/overview)
-
-### Community Resources
-- [Expo Forums](https://forums.expo.dev/)
-- [React Native Community](https://www.reactnative.community/)
-- [Firebase Slack](https://firebase.community/)
-- [Stack Overflow - React Native](https://stackoverflow.com/questions/tagged/react-native)
-
-### Tools
-- [React Native Debugger](https://github.com/jhen0409/react-native-debugger)
-- [Flipper](https://fbflipper.com/)
-- [Postman](https://www.postman.com/)
-- [Firebase Emulator Suite](https://firebase.google.com/docs/emulator-suite)
-
----
-
-This technical context provides the foundation for understanding the technology choices and how to work with the stack effectively.
+**Last Updated**: Initial Creation - October 2025  
+**Version**: 1.0  
+**Status**: Active Development
