@@ -93,7 +93,7 @@ export const processEnhancedAICommand = onCall(
         };
       }
 
-      logger.info("Processing enhanced AI command", {
+      logger.info("🤖 AI Command Processing Started", {
         command: command.substring(0, 100),
         userId: currentUserId,
         screen: appContext?.currentScreen,
@@ -221,11 +221,11 @@ async function parseCommandWithToolChain(
     // Get available tools and their definitions
     const availableTools = toolRegistry.getAllTools();
     
-    // Debug logging
-    logger.info("Available tools for AI", {
-      toolCount: availableTools.length,
-      toolNames: availableTools.map((t) => t.name),
-    });
+      // Debug logging
+      logger.info("🔧 Available AI Tools", {
+        toolCount: availableTools.length,
+        toolNames: availableTools.map((t) => t.name),
+      });
     
     const toolDefinitions = availableTools.map((tool) => ({
       type: "function",
@@ -299,58 +299,127 @@ async function parseCommandWithToolChain(
       // User has already selected a contact - skip lookup and go directly to send_message
       systemPrompt = `You are an AI assistant for a messaging app.
 
-CRITICAL: The user has already selected a contact from a previous clarification.
+CONTEXT: User previously selected a contact from clarification options.
 
 SELECTED CONTACT:
 - Name: "${appContext.clarification_response.selected_option.title}"
-- Contact ID: ${appContext.clarification_response.selected_option.id}
-- Email: ${appContext.clarification_response.selected_option.subtitle}
+- ID: ${appContext.clarification_response.selected_option.id}
+- Email: ${appContext.clarification_response.selected_option.subtitle || 'N/A'}
 
-ACTION REQUIRED:
-For "send message to [name]" commands, you MUST:
-1. Call send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="[extract message from command]", sender_id="${appContext?.currentUserId || "unknown"}")
-2. Do NOT call lookup_contacts - the user has already selected the contact
+YOUR TASK: Extract the message from the user's command and send it to this contact.
 
 EXAMPLE:
-User: "Tell John I'm on my way"
-You call: send_message(recipient_id="${appContext.clarification_response.selected_option.id}", content="I'm on my way", sender_id="${appContext?.currentUserId || "unknown"}")
-Result: Message sent successfully
+User says: "Tell them I'm running late"
+You call: send_message({
+  recipient_id: "${appContext.clarification_response.selected_option.id}",
+  content: "I'm running late",
+  sender_id: "${appContext?.currentUserId || "unknown"}"
+})
 
-CRITICAL RULES:
-- NEVER call lookup_contacts when clarification_response is present
-- ALWAYS use the selected_option.id for send_message
-- Extract the message content from the user's command`;
+CRITICAL: Do NOT call lookup_contacts - the user has already chosen who to message.`;
     } else {
-      // No clarification response - normal flow
+      // No clarification response - normal flow with concrete examples
       systemPrompt = `You are an AI assistant for a messaging app.
 
-TOOL CHAINING RULES:
+For "send message to [name]" commands, follow this pattern:
 
-1. For "send message to [name]" commands:
-   - Step 1: Call lookup_contacts(query="[name]", user_id="${appContext?.currentUserId || "unknown"}")
-   - Step 2: Check tool result's next_action field:
-     * If "clarification_needed": STOP - system will present options automatically
-     * If "continue": Use contact_id from result.data for next tool
-     * If "error": Inform user of the error
-   - Step 3 (only if step 2 was "continue"): Call send_message(recipient_id="[contact_id]", content="[message]", sender_id="${appContext?.currentUserId || "unknown"}")
-`;
-    }
+EXAMPLE 1: Clear Match
 
-    // Add common rules to both prompts
-    systemPrompt += `
+User: "Tell Jane I'm on my way"
+
+Call:
+lookup_contacts({ query: "Jane", user_id: "${appContext?.currentUserId || "unknown"}" })
+
+Result:
+{
+  "success": true,
+  "next_action": "continue",
+  "data": {
+    "contact_id": "user_abc123",
+    "contact_name": "Jane Smith",
+    "contact_email": "jane@example.com"
+  },
+  "instruction_for_ai": "Use contact_id user_abc123 for send_message"
+}
+
+Action: Continue to next tool!
+
+Call:
+send_message({
+  recipient_id: "user_abc123",
+  content: "I'm on my way",
+  sender_id: "${appContext?.currentUserId || "unknown"}"
+})
+
+Result:
+{
+  "success": true,
+  "next_action": "complete",
+  "data": { "message_id": "msg_xyz789" }
+}
+
+Final result: Message sent! ✅
+
+
+EXAMPLE 2: Need Clarification
+
+User: "Tell John I'll be late"
+
+Call:
+lookup_contacts({ query: "John", user_id: "${appContext?.currentUserId || "unknown"}" })
+
+Result:
+{
+  "success": true,
+  "next_action": "clarification_needed",
+  "data": {
+    "query": "John",
+    "total_found": 3
+  },
+  "clarification": {
+    "type": "contact_selection",
+    "question": "I found 3 contacts named John. Which one?",
+    "options": [
+      {"id": "user_111", "title": "John Doe", "subtitle": "john.doe@example.com"},
+      {"id": "user_222", "title": "John Smith", "subtitle": "jsmith@work.com"},
+      {"id": "user_333", "title": "Jonathan Lee", "subtitle": "jon@personal.net"}
+    ]
+  },
+  "instruction_for_ai": "STOP. System will show options to user."
+}
+
+Action: STOP HERE! Do NOT call send_message.
+The system will automatically present the options to the user.
+
+
+EXAMPLE 3: No Match
+
+User: "Tell Zorgblort hello"
+
+Call:
+lookup_contacts({ query: "Zorgblort", user_id: "${appContext?.currentUserId || "unknown"}" })
+
+Result:
+{
+  "success": false,
+  "next_action": "error",
+  "data": { "query": "Zorgblort", "contacts": [] },
+  "error": "No contacts found matching Zorgblort",
+  "instruction_for_ai": "Inform user no contacts found. Suggest checking spelling."
+}
+
+Action: Tell user we couldn't find anyone named Zorgblort.
+
 
 CRITICAL RULES:
-- ALWAYS check result.next_action after EACH tool call
-- If next_action is "clarification_needed", do NOT call any more tools
-- Trust the tool's next_action field completely
-- Use contact_id from result.data, never make up IDs
+1. ALWAYS check "next_action" field after calling a tool
+2. If next_action is "clarification_needed", STOP immediately - do NOT call more tools
+3. If next_action is "continue", use the contact_id from result.data for send_message
+4. If next_action is "error", inform the user of the error
+5. If next_action is "complete", you're done
 
-SINGLE TOOL COMMANDS (no chaining needed):
-- "Show me my recent conversations" → get_conversations
-- "Find my conversation with Mike" → lookup_contacts(query="Mike") then resolve_conversation
-- "What messages do I have with Mike?" → lookup_contacts(query="Mike") then get_messages
-
-When you see tool results, analyze them carefully and decide what to do next based on the user's original request.`;
+The next_action field is your instruction - trust it completely.`;
+    }
 
     // Implement iterative tool calling for proper chaining
     const messages: any[] = [
@@ -392,13 +461,14 @@ When you see tool results, analyze them carefully and decide what to do next bas
       const toolCalls = response.message.tool_calls || [];
 
       // Debug logging
-      logger.info(`AI tool calls generated (iteration ${iterationCount + 1})`, {
+      logger.info(`🤖 AI Generated Tool Plan (iteration ${iterationCount + 1})`, {
         toolCallsCount: toolCalls.length,
         toolCalls: toolCalls.map((tc: any) => ({
           name: tc.function.name,
           arguments: tc.function.arguments,
         })),
         command: command.substring(0, 100),
+        hasClarificationContext: !!appContext?.clarification_response
       });
 
       // If no tool calls, we're done
@@ -499,12 +569,19 @@ When you see tool results, analyze them carefully and decide what to do next bas
                 content: toolResultContent,
               });
               
-              logger.info(`Tool ${toolName} executed in iteration ${iterationCount + 1}`, {
+              logger.info(`📊 Tool Executed Successfully`, {
+                tool: toolName,
                 success: result.success,
+                next_action: result.next_action,
                 hasData: !!result.data,
+                hasClarification: !!result.clarification,
+                clarificationOptionsCount: result.clarification?.options?.length
               });
             } catch (error) {
-              logger.error(`Error executing tool ${toolName}:`, error);
+              logger.error(`❌ Error Executing Tool`, {
+                tool: toolName,
+                error
+              });
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
@@ -553,7 +630,7 @@ When you see tool results, analyze them carefully and decide what to do next bas
       await runTree.patchRun();
     }
 
-    logger.info("Tool chain generated", {
+    logger.info("✅ Tool Chain Generated", {
       toolCount: toolChain.length,
       tools: toolChain.map((tc) => tc.tool),
       iterations: iterationCount,
@@ -595,7 +672,7 @@ async function executeToolChain(
   const toolChainExecutor = new ToolChainExecutor(toolRegistry);
 
   try {
-    logger.info("Executing tool chain", {
+    logger.info("🔧 Executing Tool Chain", {
       toolChain: toolChain.map((tc) => ({ tool: tc.tool, parameters: tc.parameters })),
       maxChainLength,
       currentUserId,
@@ -604,10 +681,10 @@ async function executeToolChain(
     const results = await toolChainExecutor.executeChain(toolChain, context);
     const executionTime = Date.now() - startTime;
     
-    logger.info("Tool chain execution completed", {
+    logger.info("✅ Tool Chain Execution Completed", {
       resultsCount: results.length,
       executionTime,
-      results: results.map((r) => ({ success: r.success, toolName: r.metadata?.toolName })),
+      results: results.map((r) => ({ success: r.success, toolName: r.metadata?.toolName, next_action: r.next_action })),
     });
 
     // Process results and generate final response

@@ -380,33 +380,49 @@ export class ToolChainExecutor {
 
         // CHECK FOR STOP CONDITIONS IMMEDIATELY
         if (result.next_action === "clarification_needed") {
-          logger.info(`Clarification needed from ${tool.name}, stopping chain immediately`, {
-            clarification: result.clarification
+          logger.info("🛑 Chain Stopped - Clarification Needed", {
+            tool: tool.name,
+            question: result.clarification?.question,
+            optionsCount: result.clarification?.options?.length,
+            toolsExecuted: i + 1,
+            toolsSkipped: toolCalls.length - (i + 1)
           });
           break; // Stop chain immediately
         }
 
         if (result.next_action === "error" || !result.success) {
-          logger.warn(`Tool ${tool.name} failed or errored, stopping chain`, {
-            error: result.error
+          logger.warn("🛑 Chain Stopped - Error Occurred", {
+            tool: tool.name,
+            error: result.error,
+            toolsExecuted: i + 1,
+            toolsSkipped: toolCalls.length - (i + 1)
           });
           break; // Stop on error
         }
 
         if (result.next_action === "complete") {
-          logger.info(`Tool ${tool.name} completed successfully, chain done`, {
-            tool: tool.name
+          logger.info("✅ Chain Stopped - Task Complete", {
+            tool: tool.name,
+            toolsExecuted: i + 1,
+            toolsSkipped: toolCalls.length - (i + 1)
           });
           break; // Natural end of chain
         }
 
         // If next_action is "continue", proceed to next tool
-        logger.info(`Tool ${tool.name} completed, continuing chain`, {
+        logger.info("➡️ Continuing to Next Tool", {
+          currentTool: tool.name,
+          nextTool: toolCalls[i + 1]?.tool || "none",
           next_action: result.next_action
         });
 
       } catch (error) {
-        logger.error(`Error executing tool ${tool.name}:`, error);
+        logger.error("❌ Tool Execution Error", {
+          tool: tool.name,
+          error,
+          toolsExecuted: i + 1,
+          toolsSkipped: toolCalls.length - (i + 1)
+        });
         results.push({
           success: false,
           data: {},
