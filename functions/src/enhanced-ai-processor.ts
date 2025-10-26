@@ -372,7 +372,7 @@ Final result: Message sent! ✅
 
 EXAMPLE 2: Summarize Most Recent Conversation (from Chats List)
 
-User is on chats screen and says: "Summarize my most recent conversation"
+User is on chats screen and says: "Summarize my most recent conversation" or "Summarize my most recent message"
 
 Call:
 get_conversations({ user_id: "${appContext?.currentUserId || "unknown"}", limit: 1 })
@@ -502,10 +502,17 @@ CRITICAL RULES:
 3. If next_action is "continue", use the contact_id from result.data for send_message
 4. If next_action is "error", inform the user of the error
 5. If next_action is "complete", you're done
-6. Do NOT call duplicate tools in a row (e.g., get_conversations twice in a row)
+6. NEVER call the same tool twice in a row - this will cause an error
 7. If you already have a conversation_id, use it directly instead of calling get_conversations
+8. When user says "summarize my most recent message", interpret as "summarize my most recent conversation" and use get_conversations + summarize_conversation pattern
+9. Each tool should only be called ONCE per request unless the next_action explicitly tells you to call it again
 
-The next_action field is your instruction - trust it completely.`;
+The next_action field is your instruction - trust it completely.
+Available tools for summarization:
+- get_conversations: Get list of conversations
+- get_messages: Get messages from a conversation (can limit to 1 for most recent message)
+- summarize_conversation: Summarize an entire conversation
+If user wants to "summarize my most recent message", use get_conversations(limit: 1) followed by summarize_conversation.`;
     }
 
     // Implement iterative tool calling for proper chaining
@@ -573,7 +580,8 @@ The next_action field is your instruction - trust it completely.`;
         if (i > 0 && validatedToolCalls[validatedToolCalls.length - 1].function.name === currentTool.function.name) {
           logger.info(`Skipping duplicate consecutive tool: ${currentTool.function.name}`, {
             originalChainLength: toolCalls.length,
-            validatedChainLength: validatedToolCalls.length
+            validatedChainLength: validatedToolCalls.length,
+            duplicatePosition: i
           });
           continue; // Skip this duplicate tool
         }
@@ -589,6 +597,13 @@ The next_action field is your instruction - trust it completely.`;
           break; // Only execute up to this tool
         }
       }
+
+      // Log validated tool calls
+      logger.info(`✅ Validated Tool Calls (iteration ${iterationCount + 1})`, {
+        originalCount: toolCalls.length,
+        validatedCount: validatedToolCalls.length,
+        validatedTools: validatedToolCalls.map((tc: any) => tc.function.name)
+      });
 
       // Use validatedToolCalls instead of toolCalls
       const finalToolCalls = validatedToolCalls;
@@ -658,11 +673,25 @@ The next_action field is your instruction - trust it completely.`;
           continue; // Skip this tool, continue to next
         }
 
-        // Add to tool chain
-        toolChain.push({
-          tool: toolName,
-          parameters,
-        });
+        // Add to tool chain (only if not already present - deduplicate across iterations)
+        // Also prevent consecutive duplicates even with different parameters
+        const alreadyInChain = toolChain.some(tc => tc.tool === toolName && 
+          JSON.stringify(tc.parameters) === JSON.stringify(parameters));
+        const isConsecutiveDuplicate = toolChain.length > 0 && 
+          toolChain[toolChain.length - 1].tool === toolName;
+        
+        if (!alreadyInChain && !isConsecutiveDuplicate) {
+          toolChain.push({
+            tool: toolName,
+            parameters,
+          });
+        } else {
+          logger.info(`Skipping duplicate tool in chain: ${toolName}`, {
+            reason: alreadyInChain ? "already in chain" : "consecutive duplicate",
+            parameters,
+            existingChain: toolChain.map(tc => tc.tool)
+          });
+        }
 
         // For iterative calling, we need to execute the tool and provide results
         // This allows the AI to see the results and decide what to do next
