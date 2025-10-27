@@ -40,21 +40,21 @@ export const AI_ERRORS = {
   API_KEY_MISSING: {
     code: 'API_KEY_MISSING',
     message: 'AI service is not configured',
-    suggestions: ['Contact support if this issue persists'],
+    suggestions: [],
     recoverable: false,
   },
 
   API_RATE_LIMIT: {
     code: 'API_RATE_LIMIT',
-    message: 'Too many requests. Please wait a moment and try again',
-    suggestions: ['Wait 30 seconds before trying again'],
+    message: 'Too many requests. Please wait a moment',
+    suggestions: ['Wait 30 seconds before retrying'],
     recoverable: true,
   },
 
   API_TIMEOUT: {
     code: 'API_TIMEOUT',
-    message: 'Request timed out. Please try again',
-    suggestions: ['Check your internet connection', 'Try again in a moment'],
+    message: 'Request timed out',
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -69,7 +69,7 @@ export const AI_ERRORS = {
   EXECUTION_ERROR: {
     code: 'EXECUTION_ERROR',
     message: 'Command failed to execute',
-    suggestions: ['Try again', 'Check your internet connection'],
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -88,7 +88,7 @@ export const AI_ERRORS = {
   SEARCH_FAILED: {
     code: 'SEARCH_FAILED',
     message: 'Failed to search contacts',
-    suggestions: ['Try again', 'Check your internet connection'],
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -103,7 +103,7 @@ export const AI_ERRORS = {
   CONVERSATION_ERROR: {
     code: 'CONVERSATION_ERROR',
     message: 'Failed to access conversation',
-    suggestions: ['Try again', 'Check your internet connection'],
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -118,7 +118,7 @@ export const AI_ERRORS = {
   SEND_FAILED: {
     code: 'SEND_FAILED',
     message: 'Failed to send message',
-    suggestions: ['Try again', 'Check your internet connection'],
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -139,7 +139,7 @@ export const AI_ERRORS = {
   FETCH_FAILED: {
     code: 'FETCH_FAILED',
     message: 'Failed to retrieve data',
-    suggestions: ['Try again', 'Check your internet connection'],
+    suggestions: ['Check your internet connection'],
     recoverable: true,
   },
 
@@ -148,8 +148,7 @@ export const AI_ERRORS = {
     code: 'NETWORK_ERROR',
     message: 'Network connection error',
     suggestions: [
-      'Check your internet connection',
-      'Try again when connection is restored'
+      'Check your internet connection'
     ],
     recoverable: true,
   },
@@ -158,7 +157,7 @@ export const AI_ERRORS = {
   PERMISSION_DENIED: {
     code: 'PERMISSION_DENIED',
     message: 'You don\'t have permission to perform this action',
-    suggestions: ['Contact support if you believe this is an error'],
+    suggestions: [],
     recoverable: false,
   },
 
@@ -184,7 +183,7 @@ export const AI_ERRORS = {
   UNKNOWN_ERROR: {
     code: 'UNKNOWN_ERROR',
     message: 'An unexpected error occurred',
-    suggestions: ['Try again', 'Contact support if the issue persists'],
+    suggestions: [],
     recoverable: true,
   },
 } as const;
