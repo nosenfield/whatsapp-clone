@@ -1,7 +1,12 @@
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { AICommandButton } from '../../src/components/AICommandButton';
+import { useAICommandContext } from '../../src/hooks/useAICommandContext';
+import { StyleSheet, View } from 'react-native';
 
 export default function TabsLayout() {
+  const aiContext = useAICommandContext();
+
   return (
     <Tabs
       screenOptions={{
@@ -22,6 +27,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="chat-bubble" size={size} color={color} />
           ),
+          headerRight: () => (
+            <View style={styles.headerRightContainer}>
+              <AICommandButton 
+                appContext={aiContext}
+                style={styles.headerAIButton}
+              />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
@@ -36,4 +49,14 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  headerRightContainer: {
+    marginRight: 16,
+    zIndex: 1000,
+  },
+  headerAIButton: {
+    // No additional styles needed, button handles its own styling
+  },
+});
 

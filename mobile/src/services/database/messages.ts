@@ -106,17 +106,24 @@ export const updateMessage = async (
 export const getConversationMessages = async (
   conversationId: string,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  beforeTimestamp?: number
 ): Promise<Message[]> => {
   const database = getDb();
-  
-  const rows = await database.getAllAsync<any>(
-    `SELECT * FROM messages 
-     WHERE conversationId = ? AND deletedAt IS NULL
-     ORDER BY timestamp DESC 
-     LIMIT ? OFFSET ?`,
-    [conversationId, limit, offset]
-  );
+
+  let query = `SELECT * FROM messages
+               WHERE conversationId = ? AND deletedAt IS NULL`;
+  let params: any[] = [conversationId];
+
+  if (beforeTimestamp) {
+    query += ` AND timestamp < ?`;
+    params.push(beforeTimestamp);
+  }
+
+  query += ` ORDER BY timestamp ASC LIMIT ? OFFSET ?`;
+  params.push(limit, offset);
+
+  const rows = await database.getAllAsync<any>(query, params);
 
   return rows.map(rowToMessage);
 };
@@ -143,9 +150,9 @@ export const getConversationMessageCount = async (
  */
 export const getPendingMessages = async (): Promise<Message[]> => {
   const database = getDb();
-  
+
   const rows = await database.getAllAsync<any>(
-    `SELECT * FROM messages 
+    `SELECT * FROM messages
      WHERE syncStatus = 'pending'
      ORDER BY timestamp ASC`
   );

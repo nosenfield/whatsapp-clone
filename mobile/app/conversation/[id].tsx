@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useMessageStore } from '../../src/store/message-store';
 import { useNavigationCacheStore } from '../../src/store/navigation-cache-store';
@@ -96,16 +97,12 @@ export default function ConversationScreen() {
   const allMessages = [
     ...messages,
     ...optimisticMessages.filter((m) => m.conversationId === id),
-  ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  ];
 
   // Show loading screen to prevent empty slide-in animation when:
   // 1. We're still loading AND have no messages to show
   // This ensures the screen doesn't slide in empty on first open
   const shouldShowLoading = isLoading || (allMessages.length === 0 && !conversation);
-
-  // Use fade animation when loading (no messages), slide when we have content
-  const hasContent = allMessages.length > 0;
-  const animation = hasContent ? 'slide_from_right' : 'fade';
 
   if (shouldShowLoading) {
     return (
@@ -114,8 +111,8 @@ export default function ConversationScreen() {
           options={{
             title: 'Loading...',
             headerShown: true,
-            animation: 'fade', // Always fade for loading screen
-            animationDuration: 150,
+            animation: 'slide_from_right',
+            animationDuration: 300,
           }}
         />
         <View style={styles.loadingContainer}>
@@ -133,8 +130,8 @@ export default function ConversationScreen() {
           headerShown: true,
           headerTitleAlign: 'center',
           headerBackTitle: 'Chats',
-          animation: animation, // Dynamic: slide if we have messages, fade if empty
-          animationDuration: hasContent ? 300 : 150,
+          animation: 'slide_from_right',
+          animationDuration: 300,
           headerTitle: () => (
             <ConversationHeader
               conversation={conversation}
@@ -148,6 +145,14 @@ export default function ConversationScreen() {
               showMemberAvatars={showMemberAvatars}
               onToggleMemberAvatars={() => setShowMemberAvatars(!showMemberAvatars)}
             />
+          ),
+          headerRight: () => (
+            <View style={styles.headerRightContainer}>
+              <AICommandButton 
+                appContext={aiContext}
+                style={styles.headerAIButton}
+              />
+            </View>
           ),
         }}
       />
@@ -171,6 +176,8 @@ export default function ConversationScreen() {
           hasNextPage={hasMoreMessages}
           fetchNextPage={handleLoadMore}
           isFetchingNextPage={isLoadingMore}
+          autoScrollOnNewMessage={true}
+          initialScrollToBottom={true}
         />
         <MessageInput
           conversationId={id}
@@ -178,12 +185,6 @@ export default function ConversationScreen() {
           onSend={handleSendMessage}
           onSendImage={handleSendImage}
           disabled={isSending}
-        />
-        
-        {/* AI Command Button */}
-        <AICommandButton 
-          appContext={aiContext}
-          style={styles.aiFab}
         />
       </View>
     </>
@@ -201,23 +202,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
-  aiFab: {
-    position: 'absolute',
-    bottom: 100, // Position above the message input
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#34C759', // Green color for AI
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+  headerRightContainer: {
+    marginRight: 16,
+    zIndex: 1000,
+  },
+  headerAIButton: {
+    // No additional styles needed, button handles its own styling
   },
 });

@@ -162,11 +162,12 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
         style={[styles.floatingButton, style]}
         onPress={() => setIsModalVisible(true)}
         disabled={isProcessing}
+        activeOpacity={0.7}
       >
         <Ionicons 
           name="sparkles" 
-          size={24} 
-          color="white" 
+          size={28} 
+          color="#34C759" 
         />
       </TouchableOpacity>
 
@@ -265,23 +266,12 @@ export const AICommandButton: React.FC<AICommandButtonProps> = ({
 
 const styles = StyleSheet.create({
   floatingButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
   },
   modalContainer: {
     flex: 1,
