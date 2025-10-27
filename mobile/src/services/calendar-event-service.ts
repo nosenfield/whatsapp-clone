@@ -21,12 +21,27 @@ export async function getConversationEvents(conversationId: string): Promise<Ext
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      extractedAt: doc.data().extractedAt?.toDate() || new Date(),
-      date: doc.data().date?.toDate() || new Date(),
-    })) as ExtractedEvent[];
+    
+    // Log events once per query to reduce spam
+    if (snapshot.docs.length > 0) {
+      console.log('📅 Found', snapshot.docs.length, 'events for conversation:', conversationId);
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        console.log('  📅', data.title, '- messageId:', data.messageId);
+      });
+    }
+    
+    const events = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...doc.data(),
+        extractedAt: data.extractedAt?.toDate() || new Date(),
+        date: data.date?.toDate() || new Date(),
+      };
+    }) as ExtractedEvent[];
+    
+    return events;
   } catch (error) {
     console.error('Error fetching conversation events:', error);
     return [];

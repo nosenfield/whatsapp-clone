@@ -218,18 +218,26 @@ async function extractEventsWithAI(
     const systemPrompt = `You are an AI assistant that extracts calendar events from text messages. 
 Extract all events, dates, times, locations, and participants mentioned in the message.
 
+CRITICAL: You MUST return ONLY a valid JSON array. No additional text, no explanations.
+
 Rules:
 1. Only extract events that have a specific date/time
 2. If no specific date is mentioned, don't extract the event
 3. Extract both proposed and confirmed events
 4. Include all participants mentioned
 5. Extract location if mentioned
-6. Return as JSON array
+6. ALWAYS return a valid JSON array (even if empty: [])
+7. For dates, return in format: "YYYY-MM-DD" or relative dates like "tomorrow", "today"
+8. For times, return in format: "HH:MM AM/PM"
 
 Example input: "Let's meet for lunch tomorrow at 12pm at the Italian restaurant downtown"
-Example output: [{"title": "Lunch at Italian restaurant", "date": "2024-01-15", "time": "12:00 PM", "location": "Italian restaurant downtown", "participants": [], "status": "proposed"}]
+Example output: [{"title": "Lunch at Italian restaurant", "date": "tomorrow", "time": "12:00 PM", "location": "Italian restaurant downtown", "participants": [], "status": "proposed"}]
 
-Current date: ${new Date().toISOString().split("T")[0]}`;
+Example when no events: "Thanks for the update!"
+Example output: []
+
+Current date: ${new Date().toISOString().split("T")[0]}
+Current day of week: ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date().getDay()]}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
@@ -250,11 +258,21 @@ Current date: ${new Date().toISOString().split("T")[0]}`;
     // Parse JSON response
     let events: any[] = [];
     try {
-      events = JSON.parse(content);
+      // Try to extract JSON from markdown code blocks if present
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      const jsonContent = jsonMatch ? jsonMatch[1] : content;
+      
+      events = JSON.parse(jsonContent);
       if (!Array.isArray(events)) {
         events = [events];
       }
     } catch (parseError) {
+      // Check if AI said no events found (common response)
+      if (content.toLowerCase().includes("no event") || 
+          content.toLowerCase().includes("doesn't contain any event")) {
+        logger.info("AI confirmed no events in message", {content});
+        return [];
+      }
       logger.error("Error parsing OpenAI response for calendar extraction", {
         error: parseError,
         content,
@@ -351,17 +369,43 @@ function parseDate(dateString: string): Date | null {
  */
 async function saveExtractedEvent(event: any): Promise<void> {
   try {
+    // Convert Date objects to Firestore timestamps
+    let dateTimestamp = null;
+    if (event.date) {
+      if (event.date instanceof Date) {
+        dateTimestamp = admin.firestore.Timestamp.fromDate(event.date);
+      } else if (typeof event.date === 'string') {
+        // Parse string date to Date first
+        const parsedDate = new Date(event.date);
+        if (!isNaN(parsedDate.getTime())) {
+          dateTimestamp = admin.firestore.Timestamp.fromDate(parsedDate);
+        }
+      } else if (event.date._seconds) {
+        // Already a Firestore Timestamp
+        dateTimestamp = event.date;
+      }
+    }
+    
+    const eventData = {
+      ...event,
+      date: dateTimestamp,
+      extractedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
     await admin.firestore()
       .collection("extractedEvents")
       .doc(event.id)
-      .set({
-        ...event,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      .set(eventData);
 
-    logger.info("Saved extracted event", {eventId: event.id});
+    logger.info("Saved extracted event", {eventId: event.id, title: event.title});
   } catch (error) {
-    logger.error("Error saving extracted event", {error, eventId: event.id});
+    logger.error("Error saving extracted event", {
+      error,
+      eventId: event.id,
+      eventData: event,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }
