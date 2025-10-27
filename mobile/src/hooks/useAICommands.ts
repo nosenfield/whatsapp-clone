@@ -131,8 +131,9 @@ export const useAICommands = (currentConversationId?: string, appContext?: any) 
           actionType = 'none';
         }
         
-        // Check if this is an analyze_conversation result
+        // Check if this is an analyze_conversation or analyze_conversations_multi result
         const isAnalysisResult = response.toolChain?.toolsUsed?.includes('analyze_conversation') ||
+                                response.toolChain?.toolsUsed?.includes('analyze_conversations_multi') ||
                                 response.result?.answer !== undefined;
         
         if (isAnalysisResult && response.result) {

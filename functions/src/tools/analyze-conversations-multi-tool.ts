@@ -140,6 +140,24 @@ export class AnalyzeConversationsMultiTool extends BaseAITool {
         );
       }
 
+      // Step 4.5: Check if query is asking about people (who/everyone)
+      // If so, aggregate across all conversations automatically
+      const isAggregationQuery = this.shouldAggregateResults(query);
+      
+      if (isAggregationQuery && conversations.length <= 3) {
+        logger.info("🔄 Auto-aggregating results across conversations", {
+          query: query.substring(0, 100),
+          conversationCount: conversations.length,
+        });
+        
+        return await this.analyzeMultipleConversations(
+          conversations.slice(0, max_conversations),
+          query,
+          current_user_id,
+          context
+        );
+      }
+
       // Multiple conversations - request clarification
       return this.requestConversationClarification(
         conversations.slice(0, max_conversations),
@@ -468,6 +486,171 @@ export class AnalyzeConversationsMultiTool extends BaseAITool {
     if (diffDays < 7) return `${diffDays}d ago`;
     
     return date.toLocaleDateString();
+  }
+
+  /**
+   * Check if query should aggregate results across conversations
+   * Queries asking "who" or "everyone" benefit from aggregation
+   */
+  private shouldAggregateResults(query: string): boolean {
+    const lowerQuery = query.toLowerCase();
+    
+    // Queries that benefit from aggregation
+    const aggregationKeywords = [
+      'who is', 'who are', 'who\'s', 'who all',
+      'everyone', 'everybody', 'all who',
+      'list everyone', 'list all',
+      'how many people', 'how many are',
+    ];
+    
+    return aggregationKeywords.some(keyword => lowerQuery.includes(keyword));
+  }
+
+  /**
+   * Analyze multiple conversations and aggregate results
+   */
+  private async analyzeMultipleConversations(
+    conversations: ConversationGroup[],
+    query: string,
+    userId: string,
+    context: ToolContext
+  ): Promise<ToolResult> {
+    try {
+      logger.info("🔄 Analyzing multiple conversations for aggregation", {
+        conversationCount: conversations.length,
+        query: query.substring(0, 100),
+      });
+
+      // Analyze each conversation in parallel, keeping track of which conversation each result belongs to
+      const analyzer = new AnalyzeConversationTool();
+      const analysisPromises = conversations.map(async (conv) => {
+        try {
+          const result = await analyzer.execute({
+            conversation_id: conv.conversationId,
+            current_user_id: userId,
+            query,
+            max_messages: 50,
+            use_rag: true,
+          }, context);
+          
+          // Attach conversation metadata to result
+          return {
+            ...result,
+            conversationId: conv.conversationId,
+            conversationTitle: conv.title,
+          };
+        } catch (error) {
+          logger.error("Error analyzing conversation", {
+            conversationId: conv.conversationId,
+            error,
+          });
+          return null;
+        }
+      });
+
+      const results = await Promise.all(analysisPromises);
+      const successfulResults = results.filter(r => r && r.success);
+
+      if (successfulResults.length === 0) {
+        return {
+          success: false,
+          data: {},
+          next_action: "error",
+          error: "Failed to analyze conversations",
+          instruction_for_ai: "Unable to analyze the conversations. Please try again.",
+          confidence: 0,
+        };
+      }
+
+      // Aggregate answers (now each result has its conversation metadata)
+      const aggregatedAnswer = this.aggregateAnswers(
+        successfulResults,
+        query
+      );
+
+      // Calculate total messages analyzed
+      const totalMessagesAnalyzed = successfulResults.reduce((sum, r) => {
+        return sum + (r?.data?.message_count_analyzed || 0);
+      }, 0);
+
+      // Collect all relevant messages
+      const allRelevantMessages: string[] = [];
+      successfulResults.forEach(r => {
+        if (r?.data?.relevant_messages) {
+          allRelevantMessages.push(...r.data.relevant_messages);
+        }
+      });
+
+      return {
+        success: true,
+        data: {
+          answer: aggregatedAnswer.answer,
+          confidence: 0.85,
+          relevant_messages: allRelevantMessages.length > 0 ? allRelevantMessages : undefined,
+          message_count_analyzed: totalMessagesAnalyzed,
+          conversation_id: "multiple", // Indicate multiple conversations
+          query: query,
+          used_rag: true,
+          // Additional fields for aggregated results
+          sources: aggregatedAnswer.sources,
+          conversationCount: successfulResults.length,
+          aggregated: true,
+        },
+        next_action: "complete",
+        instruction_for_ai: aggregatedAnswer.answer,
+        confidence: 0.85,
+        metadata: {
+          toolName: this.name,
+          conversationsAnalyzed: successfulResults.length,
+          aggregated: true,
+        },
+      };
+    } catch (error) {
+      logger.error("Error in multi-conversation analysis", {error});
+      return {
+        success: false,
+        data: {},
+        next_action: "error",
+        error: error instanceof Error ? error.message : "Unknown error",
+        instruction_for_ai: "Failed to aggregate results. Please try selecting a specific conversation.",
+        confidence: 0,
+      };
+    }
+  }
+
+  /**
+   * Aggregate answers from multiple conversation analyses
+   * Each result now includes conversationId and conversationTitle metadata
+   */
+  private aggregateAnswers(
+    results: any[],
+    query: string
+  ): {answer: string; sources: string[]} {
+    const sources: string[] = [];
+    const answers: string[] = [];
+
+    results.forEach((result, index) => {
+      if (result.data?.answer) {
+        // Use the conversation metadata attached to the result
+        const source = result.conversationTitle || `Conversation ${index + 1}`;
+        sources.push(source);
+        answers.push(`**From ${source}:**\n${result.data.answer}`);
+      }
+    });
+
+    // Combine answers
+    let combinedAnswer = `I found information in ${sources.length} conversation${sources.length > 1 ? 's' : ''}:\n\n`;
+    combinedAnswer += answers.join('\n\n');
+    
+    // Add summary footer
+    if (sources.length > 1) {
+      combinedAnswer += `\n\n*Sources: ${sources.join(', ')}*`;
+    }
+
+    return {
+      answer: combinedAnswer,
+      sources,
+    };
   }
 }
 
