@@ -16,6 +16,8 @@ interface ConversationHeaderProps {
   conversationName: string;
   headerSubtitle: string;
   otherParticipantPhotoURL?: string;
+  isOnline?: boolean;
+  isTyping?: boolean;
   showMemberAvatars: boolean;
   onToggleMemberAvatars: () => void;
 }
@@ -27,6 +29,8 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   conversationName,
   headerSubtitle,
   otherParticipantPhotoURL,
+  isOnline,
+  isTyping,
   showMemberAvatars,
   onToggleMemberAvatars,
 }) => {
@@ -38,20 +42,36 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
     >
       {!isGroup && (
         <View style={styles.headerAvatarContainer}>
-          {otherParticipantPhotoURL ? (
-            <Image
-              source={{ uri: otherParticipantPhotoURL }}
-              style={styles.headerPhoto}
-            />
-          ) : (
-            <View style={styles.headerDefaultAvatar}>
-              <MaterialIcons
-                name="person"
-                size={18}
-                color="#fff"
+          <View style={styles.avatarWrapper}>
+            {otherParticipantPhotoURL ? (
+              <Image
+                source={{ uri: otherParticipantPhotoURL }}
+                style={styles.headerPhoto}
               />
-            </View>
-          )}
+            ) : (
+              <View style={styles.headerDefaultAvatar}>
+                <MaterialIcons
+                  name="person"
+                  size={18}
+                  color="#fff"
+                />
+              </View>
+            )}
+            {/* Online indicator in top right corner */}
+            {isOnline && (
+              <View style={styles.onlineIndicator} />
+            )}
+            {/* Typing indicator in lower right corner */}
+            {isTyping && (
+              <View style={styles.typingIndicator}>
+                <MaterialIcons
+                  name="keyboard"
+                  size={8}
+                  color="#fff"
+                />
+              </View>
+            )}
+          </View>
         </View>
       )}
       <View style={styles.headerTextContainer}>
@@ -73,6 +93,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   headerPhoto: {
     width: 32,
     height: 32,
@@ -83,6 +106,30 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#34C759',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  typingIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#007AFF',
+    borderWidth: 2,
+    borderColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
   },

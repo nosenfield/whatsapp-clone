@@ -68,10 +68,12 @@ export default function ConversationScreen() {
   const {
     isGroup,
     conversationName,
+    otherParticipantId,
     otherParticipantPhotoURL,
+    presence,
     headerSubtitle,
     groupMemberPresence,
-    typingText,
+    typingUserIds,
     showMemberAvatars,
     setShowMemberAvatars,
   } = useConversationDisplay({
@@ -84,6 +86,11 @@ export default function ConversationScreen() {
   const handleLoadMore = () => {
     loadMoreMessages(setMessages);
   };
+
+  // Check if other participant is typing (for direct chats)
+  const isOtherParticipantTyping = !isGroup && otherParticipantId 
+    ? typingUserIds.includes(otherParticipantId)
+    : false;
 
   // Combine stored messages with optimistic messages
   const allMessages = [
@@ -136,6 +143,8 @@ export default function ConversationScreen() {
               conversationName={conversationName}
               headerSubtitle={headerSubtitle}
               otherParticipantPhotoURL={otherParticipantPhotoURL}
+              isOnline={!isGroup && presence.online}
+              isTyping={isOtherParticipantTyping}
               showMemberAvatars={showMemberAvatars}
               onToggleMemberAvatars={() => setShowMemberAvatars(!showMemberAvatars)}
             />
@@ -148,6 +157,7 @@ export default function ConversationScreen() {
         <GroupMemberAvatars
           conversation={conversation}
           groupMemberPresence={groupMemberPresence}
+          typingUserIds={typingUserIds}
         />
       )}
       
@@ -162,11 +172,6 @@ export default function ConversationScreen() {
           fetchNextPage={handleLoadMore}
           isFetchingNextPage={isLoadingMore}
         />
-        {typingText && (
-          <View style={styles.typingIndicatorContainer}>
-            <Text style={styles.typingIndicatorText}>{typingText}</Text>
-          </View>
-        )}
         <MessageInput
           conversationId={id}
           userId={currentUser?.id || ''}
@@ -195,16 +200,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
-  },
-  typingIndicatorContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#fff',
-  },
-  typingIndicatorText: {
-    fontSize: 14,
-    color: '#8E8E93',
-    fontStyle: 'italic',
   },
   aiFab: {
     position: 'absolute',

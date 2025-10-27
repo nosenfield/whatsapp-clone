@@ -47,18 +47,13 @@ export const ConversationItem = ({
   // Subscribe to typing indicators for this conversation
   const typingUserIds = useTypingIndicators(conversation.id, currentUserId);
 
-  // Format typing indicator text
-  const typingText = typingUserIds.length > 0
-    ? formatTypingIndicator(typingUserIds, conversation.participantDetails)
-    : null;
+  // Check if the other participant is typing (for direct chats)
+  const isOtherParticipantTyping = !isGroup && otherParticipantId 
+    ? typingUserIds.includes(otherParticipantId)
+    : false;
 
   // Format last message preview based on message type
   const getLastMessagePreview = () => {
-    // If someone is typing, show typing indicator instead of last message
-    if (typingText) {
-      return typingText;
-    }
-
     if (!conversation.lastMessage) {
       return 'No messages yet';
     }
@@ -138,8 +133,20 @@ export const ConversationItem = ({
             />
           )}
         </View>
-        {/* Online indicator - green dot if user is online (only for direct chats) */}
-        {!isGroup && presence.online && <View style={styles.onlineIndicator} />}
+        {/* Online indicator - green dot in top right corner (only for direct chats) */}
+        {!isGroup && presence.online && (
+          <View style={styles.onlineIndicator} />
+        )}
+        {/* Typing indicator - keyboard icon in lower right corner */}
+        {!isGroup && isOtherParticipantTyping && (
+          <View style={styles.typingIndicator}>
+            <MaterialIcons
+              name="keyboard"
+              size={12}
+              color="#fff"
+            />
+          </View>
+        )}
       </View>
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
@@ -148,10 +155,7 @@ export const ConversationItem = ({
           </Text>
           <Text style={styles.timestamp}>{formatTimestamp(timestamp)}</Text>
         </View>
-        <Text style={[
-          styles.lastMessage,
-          typingText && styles.typingMessage
-        ]} numberOfLines={2}>
+        <Text style={styles.lastMessage} numberOfLines={2}>
           {lastMessageText}
         </Text>
       </View>
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 2,
+    top: 2,
     right: 2,
     width: 14,
     height: 14,
@@ -198,6 +202,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#34C759', // iOS green color
     borderWidth: 2,
     borderColor: '#fff',
+  },
+  typingIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#007AFF', // iOS blue color for typing
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   conversationContent: {
     flex: 1,
@@ -224,10 +241,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#8E8E93',
     lineHeight: 20,
-  },
-  typingMessage: {
-    color: '#007AFF',
-    fontStyle: 'italic',
   },
 });
 

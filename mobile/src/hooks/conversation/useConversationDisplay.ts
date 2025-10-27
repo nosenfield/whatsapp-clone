@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { Conversation } from '../../types';
 import { usePresence, formatLastSeen } from '../usePresence';
 import { useMultiplePresence } from '../useMultiplePresence';
-import { useTypingIndicators, formatTypingIndicator } from '../useTypingIndicators';
+import { useTypingIndicators } from '../useTypingIndicators';
 
 interface UseConversationDisplayProps {
   conversation: Conversation | null;
@@ -76,12 +76,20 @@ export const useConversationDisplay = ({
   // Subscribe to typing indicators
   const typingUserIds = useTypingIndicators(conversationId, currentUserId);
 
-  // Format typing indicator text
-  const typingText = useMemo(() => {
-    return conversation && typingUserIds.length > 0
-      ? formatTypingIndicator(typingUserIds, conversation.participantDetails)
-      : null;
-  }, [conversation, typingUserIds]);
+  // Check if other participant is typing (for direct chats)
+  const isOtherParticipantTyping = useMemo(() => {
+    return !isGroup && otherParticipantId 
+      ? typingUserIds.includes(otherParticipantId)
+      : false;
+  }, [isGroup, otherParticipantId, typingUserIds]);
+
+  // Override header subtitle to show "typing..." when user is typing
+  const finalHeaderSubtitle = useMemo(() => {
+    if (!isGroup && isOtherParticipantTyping) {
+      return 'typing...';
+    }
+    return headerSubtitle;
+  }, [isGroup, isOtherParticipantTyping, headerSubtitle]);
 
   return {
     isGroup,
@@ -90,8 +98,8 @@ export const useConversationDisplay = ({
     otherParticipantPhotoURL,
     presence,
     groupMemberPresence,
-    headerSubtitle,
-    typingText,
+    headerSubtitle: finalHeaderSubtitle,
+    typingUserIds,
     showMemberAvatars,
     setShowMemberAvatars,
   };
