@@ -13,6 +13,8 @@ import {SendMessageTool} from "./send-message-tool";
 import {GetConversationInfoTool} from "./get-conversation-info-tool";
 import {SummarizeConversationTool} from "./summarize-conversation-tool";
 import {AnalyzeConversationTool} from "./analyze-conversation-tool";
+import {AnalyzeConversationsMultiTool} from "./analyze-conversations-multi-tool";
+import {SearchConversationsTool} from "./search-conversations-tool";
 
 // Create and configure the tool registry
 export function initializeToolRegistry(): AIToolRegistry {
@@ -27,6 +29,8 @@ export function initializeToolRegistry(): AIToolRegistry {
   registry.register(new GetConversationInfoTool());
   registry.register(new SummarizeConversationTool());
   registry.register(new AnalyzeConversationTool());
+  registry.register(new AnalyzeConversationsMultiTool());
+  registry.register(new SearchConversationsTool());
 
   return registry;
 }

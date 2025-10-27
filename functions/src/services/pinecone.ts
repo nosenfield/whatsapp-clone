@@ -88,7 +88,24 @@ export async function searchConversationHistory(
       searchRequest.filter = filter;
     }
 
+    logger.info("🔍 Pinecone query request", {
+      topK,
+      filter: JSON.stringify(filter),
+      embeddingLength: queryEmbedding.length,
+    });
+
     const response = await index.query(searchRequest);
+
+    logger.info("📊 Pinecone query response", {
+      matchCount: response.matches?.length || 0,
+      matches: response.matches?.slice(0, 3).map(m => ({
+        id: m.id,
+        score: m.score,
+        hasMetadata: !!m.metadata,
+        participants: m.metadata?.participants,
+        conversationId: m.metadata?.conversationId,
+      })),
+    });
 
     return response.matches?.map((match) => ({
       id: match.id,
@@ -96,7 +113,7 @@ export async function searchConversationHistory(
       metadata: match.metadata,
     })) || [];
   } catch (error) {
-    logger.error("Error searching conversation history", {error});
+    logger.error("❌ Error searching conversation history", {error, filter});
     throw error;
   }
 }
@@ -114,7 +131,7 @@ export async function searchAcrossConversations(
   topK = 20
 ): Promise<any[]> {
   const filter = {
-    userId: {$eq: userId},
+    participants: {$in: [userId]},
   };
 
   return searchConversationHistory(queryEmbedding, topK, filter);
@@ -164,7 +181,7 @@ export async function getEmbeddingStats(userId: string): Promise<{
       vector: new Array(1536).fill(0), // Dummy vector for metadata query
       topK: 10000, // Large number to get all results
       filter: {
-        userId: {$eq: userId},
+        participants: {$in: [userId]},
       },
       includeMetadata: true,
     });

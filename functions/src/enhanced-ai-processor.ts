@@ -878,7 +878,7 @@ Tools:
 2. summarize_conversation({ conversation_id: "[id from step 1]", current_user_id: "${userId}" })
 `}
 
-## Pattern 3: Extract Information from Conversation
+## Pattern 3: Extract Information from Conversation (Inside a Conversation)
 ${inConversation ? `
 User asks: "Who is coming?", "What did John say about X?", "When is the meeting?", "Who confirmed?"
 Context: User is in conversation ${currentConvId}
@@ -896,10 +896,33 @@ Examples:
 - "Who is coming to the party tonight?" → analyze_conversation with query "Who is coming to the party tonight?"
 - "Did anyone confirm for the meeting?" → analyze_conversation with query "Who confirmed for the meeting?"
 - "What did Sarah say about the deadline?" → analyze_conversation with query "What did Sarah say about the deadline?"
-` : `
-User asks information questions but is NOT in a conversation.
-Action: Inform user they need to be in a specific conversation to extract information from it.
-`}
+` : ''}
+
+## Pattern 4: Extract Information (NOT in a Conversation)
+${!inConversation ? `
+User asks: "Who is coming?", "What did John say?", "When is the meeting?", "Who confirmed?"
+Context: User is on chats list (NOT in a specific conversation)
+
+Tools:
+1. analyze_conversations_multi({
+     query: "[user's exact question]",
+     current_user_id: "${userId}",
+     max_conversations: 5,
+     time_window_hours: 48
+   })
+   → Result handling:
+      - If next_action = "complete" → Present answer directly
+      - If next_action = "clarification_needed" → Show conversation options to user
+      - If next_action = "error" → Inform user no relevant conversations found
+
+Examples:
+- "Who confirmed for tonight?" → Search recent conversations for confirmation patterns
+- "What time did we agree on?" → Find conversations with time mentions
+- "Did anyone respond about the budget?" → Search for budget-related messages
+
+⚠️ CRITICAL: Use analyze_conversations_multi (plural) when NOT in a conversation.
+           Use analyze_conversation (singular) when IN a conversation.
+` : ''}
 
 # PARAMETER EXTRACTION
 lookup_contacts.data.contact_id → send_message.recipient_id
@@ -914,7 +937,8 @@ To decide which pattern to use, classify the user's intent:
 - Want a summary of conversation? → Pattern 2 (summarize_conversation)
   Triggers: "summarize", "recap", "sum up", "what happened", "overview"
   
-- Asking "who/what/when/where" about conversation content? → Pattern 3 (analyze_conversation)
+- Asking "who/what/when/where" about conversation content?
+  ${inConversation ? `→ Pattern 3 (analyze_conversation - singular, for current conversation)` : `→ Pattern 4 (analyze_conversations_multi - plural, search across conversations)`}
   Triggers: "who is", "what did", "when is", "how many", "list all", "did anyone"
   Examples: "Who confirmed?", "What did Sarah say?", "When is the deadline?"
 
@@ -934,7 +958,9 @@ Done! ✓
 ❌ Using placeholder values like "[contact_id]" in parameters
 ❌ Calling same tool consecutively
 ❌ Ignoring next_action field
-❌ Using summarize_conversation when user wants specific information (use analyze_conversation instead)`;
+❌ Using summarize_conversation when user wants specific information (use analyze_conversation instead)
+❌ Using analyze_conversation when NOT in a conversation (use analyze_conversations_multi instead)
+❌ Telling user to "open a conversation first" - always try analyze_conversations_multi when on chats list`;
 }
 
 /**

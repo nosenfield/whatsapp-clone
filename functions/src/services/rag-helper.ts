@@ -31,7 +31,7 @@ export async function enhancePromptWithContext(
     const relevantMessages = await searchConversationHistory(
       queryEmbedding,
       maxContextMessages,
-      conversationId ? {conversationId: {$eq: conversationId}} : {userId: {$eq: userId}}
+      conversationId ? {conversationId: {$eq: conversationId}} : {participants: {$in: [userId]}}
     );
 
     if (relevantMessages.length === 0) {
@@ -79,9 +79,15 @@ async function fetchMessageDetails(messageIds: Array<{id: string, score?: number
 
   for (const item of messageIds) {
     try {
+      const conversationId = item.metadata?.conversationId;
+      if (!conversationId) {
+        logger.warn("Message metadata missing conversationId", {messageId: item.id});
+        continue;
+      }
+
       const messageDoc = await admin.firestore()
         .collection("conversations")
-        .doc(item.metadata.conversationId)
+        .doc(conversationId)
         .collection("messages")
         .doc(item.id)
         .get();
@@ -91,7 +97,9 @@ async function fetchMessageDetails(messageIds: Array<{id: string, score?: number
         messages.push({
           id: item.id,
           ...messageData,
+          conversationId, // ← ADD THIS: Preserve conversationId from metadata
           relevanceScore: item.score || 0,
+          metadata: item.metadata, // ← ADD THIS: Preserve full metadata
         });
       }
     } catch (error) {
@@ -189,28 +197,49 @@ export async function searchUserConversations(
   maxResults = 10
 ): Promise<any[]> {
   try {
+    logger.info("🔍 Starting searchUserConversations", {
+      query: query.substring(0, 100),
+      userId,
+      maxResults,
+    });
+
     // Generate query embedding
     const queryEmbedding = await generateQueryEmbedding(query);
+    logger.info("✅ Generated query embedding", {
+      embeddingLength: queryEmbedding.length,
+    });
 
     // Search across all user conversations
+    // Use participants array since userId is not directly stored in metadata
     const searchResults = await searchConversationHistory(
       queryEmbedding,
       maxResults,
-      {userId: {$eq: userId}}
+      {participants: {$in: [userId]}}
     );
+
+    logger.info("📊 Pinecone search results", {
+      rawResultCount: searchResults.length,
+      results: searchResults.map(r => ({
+        id: r.id,
+        score: r.score,
+        conversationId: r.metadata?.conversationId,
+        userId: r.metadata?.userId,
+      })),
+    });
 
     // Fetch full message details
     const results = await fetchMessageDetails(searchResults);
 
-    logger.info("Search completed", {
+    logger.info("✅ Search completed", {
       userId,
       query: query.substring(0, 100),
-      resultCount: results.length,
+      pineconeResults: searchResults.length,
+      firestoreResults: results.length,
     });
 
     return results;
   } catch (error) {
-    logger.error("Error searching user conversations", {error, userId, query});
+    logger.error("❌ Error searching user conversations", {error, userId, query});
     return [];
   }
 }
