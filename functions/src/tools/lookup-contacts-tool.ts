@@ -286,8 +286,19 @@ export class LookupContactsTool extends BaseAITool {
       return true;
     }
 
+    // Multi-word query matching (e.g., "John Kennedy" should match "John F. Kennedy")
+    if (query.includes(" ") && normalizedValue.includes(" ")) {
+      const queryWords = query.split(" ").filter((w: string) => w.length > 0);
+      const valueWords = normalizedValue.split(" ").filter((w: string) => w.length > 0);
+      
+      // Check if all query words match corresponding value words (allowing for middle names/initials)
+      if (this.matchesMultiWordQuery(queryWords, valueWords)) {
+        return true;
+      }
+    }
+
     // Fuzzy matching for names (split by spaces)
-    if (fieldValue.includes(" ")) {
+    if (normalizedValue.includes(" ")) {
       const words = normalizedValue.split(" ");
       for (const word of words) {
         if (word.startsWith(query) || word.includes(query)) {
@@ -297,6 +308,51 @@ export class LookupContactsTool extends BaseAITool {
     }
 
     return false;
+  }
+
+  private matchesMultiWordQuery(queryWords: string[], valueWords: string[]): boolean {
+    // If query has more words than value, can't match
+    if (queryWords.length > valueWords.length) {
+      return false;
+    }
+
+    // Try to match query words to value words, allowing for middle names/initials
+    // Example: ["john", "kennedy"] should match ["john", "f.", "kennedy"]
+    
+    let valueIndex = 0;
+    for (let i = 0; i < queryWords.length; i++) {
+      const queryWord = queryWords[i];
+      let found = false;
+      
+      // Look for this query word in remaining value words
+      while (valueIndex < valueWords.length) {
+        const valueWord = valueWords[valueIndex];
+        
+        // Check for match (exact, starts with, or is initial)
+        if (valueWord === queryWord || 
+            valueWord.startsWith(queryWord) || 
+            queryWord.startsWith(valueWord)) {
+          found = true;
+          valueIndex++;
+          break;
+        }
+        
+        // Skip potential middle initials (single letter or letter with period)
+        if (valueWord.length <= 2 && valueWord.replace(".", "").length === 1) {
+          valueIndex++;
+          continue;
+        }
+        
+        // No match for this value word, move to next
+        valueIndex++;
+      }
+      
+      if (!found) {
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   private calculateContactConfidence(contact: any, query: string, searchFields: string[], recentContacts: string[]): number {
@@ -320,6 +376,14 @@ export class LookupContactsTool extends BaseAITool {
         // Contains gets medium confidence
         else if (normalizedValue.includes(normalizedQuery)) {
           confidence = Math.max(confidence, 0.6);
+        }
+        // Multi-word match (e.g., "John Kennedy" matches "John F. Kennedy")
+        else if (normalizedQuery.includes(" ") && normalizedValue.includes(" ")) {
+          const queryWords = normalizedQuery.split(" ").filter((w: string) => w.length > 0);
+          const valueWords = normalizedValue.split(" ").filter((w: string) => w.length > 0);
+          if (this.matchesMultiWordQuery(queryWords, valueWords)) {
+            confidence = Math.max(confidence, 0.7); // High confidence for multi-word matches
+          }
         }
         // Fuzzy match gets lower confidence
         else if (this.hasFuzzyMatch(normalizedValue, normalizedQuery)) {

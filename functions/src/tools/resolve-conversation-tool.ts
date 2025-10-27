@@ -160,9 +160,66 @@ export class ResolveConversationTool extends BaseAITool {
           ...userData,
         };
       }
+
+      // Multi-word name matching (e.g., "John Kennedy" should match "John F. Kennedy")
+      if (normalizedName.includes(" ") && displayName.includes(" ")) {
+        const queryWords = normalizedName.split(" ").filter((w: string) => w.length > 0);
+        const nameWords = displayName.split(" ").filter((w: string) => w.length > 0);
+        
+        if (this.matchesMultiWordName(queryWords, nameWords)) {
+          return {
+            id: doc.id,
+            ...userData,
+          };
+        }
+      }
     }
 
     return null;
+  }
+
+  private matchesMultiWordName(queryWords: string[], nameWords: string[]): boolean {
+    // If query has more words than name, can't match
+    if (queryWords.length > nameWords.length) {
+      return false;
+    }
+
+    // Try to match query words to name words, allowing for middle names/initials
+    // Example: ["john", "kennedy"] should match ["john", "f.", "kennedy"]
+    
+    let nameIndex = 0;
+    for (const queryWord of queryWords) {
+      let found = false;
+      
+      // Look for this query word in remaining name words
+      while (nameIndex < nameWords.length) {
+        const nameWord = nameWords[nameIndex];
+        
+        // Check for match (exact, starts with, or is initial)
+        if (nameWord === queryWord || 
+            nameWord.startsWith(queryWord) || 
+            queryWord.startsWith(nameWord)) {
+          found = true;
+          nameIndex++;
+          break;
+        }
+        
+        // Skip potential middle initials (single letter or letter with period)
+        if (nameWord.length <= 2 && nameWord.replace(".", "").length === 1) {
+          nameIndex++;
+          continue;
+        }
+        
+        // No match for this name word, move to next
+        nameIndex++;
+      }
+      
+      if (!found) {
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   private async getParticipantDetails(participantIds: string[]): Promise<any[]> {
